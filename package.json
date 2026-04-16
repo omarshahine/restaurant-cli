@@ -1,0 +1,118 @@
+{
+  "name": "restaurant-cli",
+  "version": "0.1.0",
+  "description": "Pluggable CLI for booking restaurant reservations across Resy, OpenTable, Tock, and other providers",
+  "type": "module",
+  "bin": {
+    "restaurant": "./dist/bin/restaurant.js"
+  },
+  "main": "./dist/src/index.js",
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./providers": {
+      "types": "./dist/src/providers/index.d.ts",
+      "import": "./dist/src/providers/index.js"
+    },
+    "./scheduler": {
+      "types": "./dist/src/scheduler/index.d.ts",
+      "import": "./dist/src/scheduler/index.js"
+    },
+    "./core": {
+      "types": "./dist/src/core/index.d.ts",
+      "import": "./dist/src/core/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "skills/",
+    "agents/",
+    "commands/",
+    ".claude-plugin/",
+    "openclaw.plugin.json",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "keywords": [
+    "cli",
+    "restaurant",
+    "reservation",
+    "booking",
+    "resy",
+    "opentable",
+    "tock",
+    "sevenrooms",
+    "openclaw",
+    "openclaw-plugin",
+    "claude-code",
+    "claude-code-plugin"
+  ],
+  "author": {
+    "name": "Omar Shahine",
+    "email": "omar@shahine.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omarshahine/restaurant-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/omarshahine/restaurant-cli/issues"
+  },
+  "homepage": "https://github.com/omarshahine/restaurant-cli#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/src/integrations/openclaw/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.3.23"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx bin/restaurant.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write .",
+    "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48",
+    "citty": "^0.1.6",
+    "pino": "^9.5.0",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "nock": "^14.0.0-beta.19",
+    "prettier": "^3.4.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.2",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.23"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  }
+}

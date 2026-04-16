@@ -1,0 +1,20 @@
+version: 1
+defaults:
+  provider: resy
+  partySize: 2
+  timezone: America/Los_Angeles
+
+providers:
+  resy:
+    email: you@example.com
+    tokenRef:
+      source: env
+      id: RESY_API_TOKEN
+  # opentable: {}   # added in M6
+
+scheduler:
+  backend: at       # POSIX `at`; daemon backend planned
+
+logging:
+  level: info
+  # file: ~/.local/state/restaurant-cli/restaurant.log

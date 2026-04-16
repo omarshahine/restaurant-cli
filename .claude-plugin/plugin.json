@@ -1,0 +1,12 @@
+{
+  "name": "restaurant-cli",
+  "version": "0.1.0",
+  "description": "Pluggable reservation booking — Resy, OpenTable, Tock, and other providers",
+  "author": {
+    "name": "Omar Shahine",
+    "email": "omar@shahine.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/omarshahine/restaurant-cli",
+  "keywords": ["restaurant", "reservation", "booking", "resy", "opentable"]
+}
