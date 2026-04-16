@@ -23,9 +23,10 @@ describe("providers/registry", () => {
     expect(resy.capabilities.book).toBe(false); // M2
 
     const ot = r.get("opentable");
-    expect(ot.capabilities.search).toBe(true);
-    expect(ot.capabilities.availability).toBe(true);
-    // OpenTable can't book via API — it can only hand off a URL.
+    // OpenTable's HTTP read-path is blocked by Akamai; only the URL
+    // builder works reliably today. The provider is honest about this.
+    expect(ot.capabilities.search).toBe(false);
+    expect(ot.capabilities.availability).toBe(false);
     expect(ot.capabilities.book).toBe(false);
     expect(ot.capabilities.bookUrl).toBe(true);
     expect(ot.getBookingUrl).toBeDefined();
