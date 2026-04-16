@@ -6,6 +6,7 @@ describe("providers/registry", () => {
     const r = buildRegistry();
     const ids = r.ids();
     expect(ids).toContain("resy");
+    expect(ids).toContain("opentable");
     // This test is the explicit guard that adding a provider to
     // bootstrap.ts surfaces it without any other code change.
   });
@@ -15,11 +16,18 @@ describe("providers/registry", () => {
     expect(() => r.register(r.get("resy"))).toThrow(/already registered/);
   });
 
-  it("surfaces capabilities honestly", () => {
+  it("surfaces capabilities honestly per-provider", () => {
     const r = buildRegistry();
     const resy = r.get("resy");
     expect(resy.capabilities.search).toBe(true);
-    // M2-only features are still false in M1.
-    expect(resy.capabilities.book).toBe(false);
+    expect(resy.capabilities.book).toBe(false); // M2
+
+    const ot = r.get("opentable");
+    expect(ot.capabilities.search).toBe(true);
+    expect(ot.capabilities.availability).toBe(true);
+    // OpenTable can't book via API — it can only hand off a URL.
+    expect(ot.capabilities.book).toBe(false);
+    expect(ot.capabilities.bookUrl).toBe(true);
+    expect(ot.getBookingUrl).toBeDefined();
   });
 });

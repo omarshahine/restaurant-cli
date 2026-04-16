@@ -10,3 +10,14 @@
 - Attribution: design-only inspiration from lgrees/resy-cli (MIT). NOTICE + README credit; endpoint-level citations inline.
 - M1 scope: setup + search + doctor + version. Other commands stubbed to report "not implemented yet".
 - Open: publish to npm, GitHub, ClawHub, and omarshahine-plugins marketplace — pending user approval of initial commit.
+
+### Session 2 — OpenTable prototype (M6 early)
+
+- Investigated OpenTable API reality across 8+ active 2026 repos (jallenschuler/restaurant-butler, gabehassan/noresi, mikehe123/opentable-reservations, yhyatt/ClawCierge, rajksarkar/reservation-agent, bzeng68/res-bot, duaragha/opentable-mcp).
+- Confirmed: OpenTable public API (restref/api, heroku, affiliate) is dead. The `/dapi/` endpoints the opentable.com React app uses DO work anonymously for read. Booking completion requires browser automation.
+- Decision: three-layer module — (1) HTTP `/dapi/` for search + availability, (2) URL builder for zero-maintenance deep-link hand-off, (3) browser-use for book, deferred behind an opt-in flag (not shipped yet).
+- Safety invariant: **never auto-submit a booking.** Borrowed from mikehe123/opentable-reservations — agents that automate the full OT flow have been observed confirming real reservations by accident. The CLI stops at the deep link.
+- Pluggable seam proved: `git diff --stat HEAD -- src/cli src/core src/scheduler src/integrations` returned empty after adding OpenTable. The only changes outside `src/providers/opentable/` were: one line in `bootstrap.ts`, two additions to `types.ts` (new `bookUrl` capability + optional `getBookingUrl` method).
+- Fixed latent bug in `doctor.ts` that OpenTable exposed: doctor skipped anonymous providers instead of running `auth.validate()`.
+- 19 tests passing (11 from M1 + 8 new for OpenTable). `restaurant doctor` now shows both providers with honest capabilities.
+- Open: (a) decide whether to prototype the M6 browser-book path next or return to M2 (Resy book) first, (b) live smoke test the `/dapi/` path against real OpenTable IDs, (c) push + publish (still held).
