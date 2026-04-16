@@ -1,0 +1,52 @@
+{
+  "id": "restaurant-cli",
+  "name": "Restaurant",
+  "description": "Pluggable reservation booking via Resy, OpenTable, Tock, and other providers",
+  "skills": ["skills/restaurant"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "resy_apiKey": {
+        "oneOf": [
+          { "type": "string", "description": "Resy public API key" },
+          {
+            "type": "object",
+            "description": "SecretRef for Resy API key",
+            "properties": {
+              "source": { "type": "string", "enum": ["env", "file"] },
+              "id": { "type": "string" }
+            },
+            "required": ["source", "id"]
+          }
+        ]
+      },
+      "resy_authToken": {
+        "oneOf": [
+          { "type": "string", "description": "Resy user auth token" },
+          {
+            "type": "object",
+            "description": "SecretRef for Resy auth token",
+            "properties": {
+              "source": { "type": "string", "enum": ["env", "file"] },
+              "id": { "type": "string" }
+            },
+            "required": ["source", "id"]
+          }
+        ]
+      }
+    },
+    "additionalProperties": false
+  },
+  "uiHints": {
+    "resy_apiKey": {
+      "label": "Resy API Key",
+      "sensitive": true,
+      "help": "Resy.com → DevTools → Network → any API call → copy api_key from the Authorization header."
+    },
+    "resy_authToken": {
+      "label": "Resy Auth Token",
+      "sensitive": true,
+      "help": "Resy.com → DevTools → Network → any API call → copy X-Resy-Auth-Token header."
+    }
+  }
+}
