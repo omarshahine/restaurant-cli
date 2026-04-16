@@ -32,11 +32,12 @@ export const doctorCommand = defineCommand({
       log(`  - ${p.id}  capabilities: ${caps || "(none)"}`);
 
       const pc = config.providers[p.id];
-      if (!pc) {
+      const needsConfig = p.auth.setupPrompts().length > 0;
+      if (!pc && needsConfig) {
         log(`      auth: not configured (run: restaurant setup ${p.id})`);
         continue;
       }
-      const creds = buildCreds(p.id, pc);
+      const creds = buildCreds(p.id, pc ?? {});
       try {
         const status = await p.auth.validate(creds);
         log(`      auth: ${status.ok ? "ok" : "FAIL"}${status.detail ? ` (${status.detail})` : ""}${status.error ? ` — ${status.error}` : ""}`);

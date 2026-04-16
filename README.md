@@ -54,15 +54,24 @@ Never uses macOS Keychain.
 | Command | Status |
 |---|---|
 | `setup <provider>` | M1 ✓ |
-| `search <query>` | M1 ✓ |
+| `search <query>` | M1 ✓ (Resy + OpenTable) |
 | `doctor` | M1 ✓ |
 | `version` | M1 ✓ |
-| `availability` | M2 |
-| `book` | M2 |
+| `availability` | Resy: M2 / OpenTable: ✓ |
+| `book` | Resy: M2 / OpenTable: hand-off URL |
 | `list` | M2 |
 | `cancel` | M2 |
 | `snipe` | M3 |
 | `jobs` | M3 |
+
+## Providers
+
+| Provider | search | availability | book | cancel | list | snipe | bookUrl |
+|---|---|---|---|---|---|---|---|
+| Resy | ✓ | M2 | M2 | M2 | M2 | M3 | — |
+| OpenTable | ✓ | ✓ | — | — | — | — | ✓ |
+
+OpenTable has no public consumer API. Search and availability use the reverse-engineered `/dapi/` endpoints the opentable.com React app itself calls. Booking completion requires driving a real browser session and is intentionally deferred (safety: agents that automate the full OpenTable flow accidentally confirm real reservations). For now OpenTable produces a deep link you click to complete the booking in your browser with your OpenTable account.
 
 ## Attribution
 

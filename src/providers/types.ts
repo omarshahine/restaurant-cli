@@ -23,6 +23,14 @@ export interface ProviderCapabilities {
   list: boolean;
   /** Supports timed-release ("sniping") future bookings. */
   snipe: boolean;
+  /**
+   * Provider can generate a user-facing booking deep link but cannot complete
+   * the booking via API (e.g. OpenTable — user must click Confirm themselves).
+   * This is a safety-first capability: the CLI/agents should prefer `bookUrl`
+   * over `book` whenever both are false unless the user explicitly opts in
+   * to browser-automation booking.
+   */
+  bookUrl?: boolean;
   /** Future capability: waitlist management. */
   waitlist?: boolean;
   /** Future capability: notify when a slot opens. */
@@ -145,4 +153,10 @@ export interface Provider {
   book(r: BookRequest, creds: Credentials): Promise<BookResult>;
   cancel(reservationId: string, creds: Credentials): Promise<CancelResult>;
   listReservations(creds: Credentials): Promise<Reservation[]>;
+  /**
+   * Optional. Implemented when `capabilities.bookUrl` is true. Returns a
+   * user-facing URL the user can open to complete the booking themselves.
+   * The CLI treats this as a hand-off, not a completed booking.
+   */
+  getBookingUrl?(r: BookRequest, creds: Credentials): Promise<string>;
 }
