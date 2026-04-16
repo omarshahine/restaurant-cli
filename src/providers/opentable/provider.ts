@@ -1,43 +1,65 @@
 import type { AuthStatus, BookRequest, BookResult, Credentials, Provider, Reservation } from "../types.js";
 import { CapabilityError } from "../../core/errors.js";
-import { searchVenues } from "./search.js";
-import { getAvailability } from "./availability.js";
+// Parsers in ./search.ts and ./availability.ts are kept for future
+// reuse by a browser-automation read-path. They are not wired into the
+// live provider surface today because their HTTP transport is blocked.
 import { buildBookingUrl } from "./deeplink.js";
 
 /**
  * OpenTable provider.
  *
- * OpenTable has no public consumer API. We use the reverse-engineered
- * `/dapi/` endpoints (same ones opentable.com's own React app uses) for
- * search and availability. Booking cannot be completed programmatically
- * without driving a real browser — that's deferred to a future milestone
- * behind an opt-in flag. For now we expose `bookUrl` capability and return a
- * pre-filled deep link the user can click to complete the booking in their
- * own browser with their own OpenTable account.
+ * OpenTable has no public consumer API, and live probing (2026-04-16)
+ * confirmed that the `/dapi/` endpoints used by opentable.com's React app
+ * are protected by Akamai Bot Manager with TLS-fingerprint blocking. Pure
+ * Node.js `fetch()` gets a 403 regardless of how closely we mimic Chrome
+ * headers. The HTTP parser code in `client.ts`, `search.ts`, and
+ * `availability.ts` is kept as scaffolding for a future browser-automation
+ * module (which will feed real data through the same parsers) but those
+ * capabilities are declared `false` here because they don't currently work.
+ *
+ * The one capability that DOES work today is `bookUrl` — a pure URL
+ * construction that opens opentable.com's booking page pre-filled with the
+ * venue, date, time, and party size. The user completes the reservation in
+ * their own browser with their own OpenTable account.
+ *
+ * Safety invariant from mikehe123/opentable-reservations: never auto-submit
+ * a booking. Hand-off only.
  */
 export const openTableProvider: Provider = {
   id: "opentable",
   displayName: "OpenTable",
   capabilities: {
-    search: true,
-    availability: true,
+    // HTTP-based search/availability blocked by Akamai. Will flip to true
+    // when a browser-automation read-path lands.
+    search: false,
+    availability: false,
     book: false,
     cancel: false,
     list: false,
-    snipe: false, // enable once book: true (browser automation module)
+    snipe: false,
     bookUrl: true,
   },
   auth: {
     async validate(_creds: Credentials): Promise<AuthStatus> {
-      // OpenTable /dapi/ search works anonymously. No credentials needed
-      // for the read-path; declare OK. When the browser-backed book-path
-      // lands, this will probe the logged-in session instead.
-      return { ok: true, detail: "anonymous (read-only)" };
+      return {
+        ok: true,
+        detail: "bookUrl only (live HTTP blocked by Akamai; browser module TBD)",
+      };
     },
     setupPrompts: () => [],
   },
-  searchVenues,
-  getAvailability,
+  async searchVenues(_q, _creds) {
+    throw new CapabilityError(
+      "opentable",
+      "search (HTTP blocked by Akamai; use --provider resy or the future browser module)",
+    );
+  },
+  async getAvailability(_q, _creds) {
+    throw new CapabilityError(
+      "opentable",
+      "availability (HTTP blocked by Akamai; use --provider resy or the future browser module)",
+    );
+  },
   async book(_r: BookRequest, _creds: Credentials): Promise<BookResult> {
     throw new CapabilityError("opentable", "book (use getBookingUrl for hand-off)");
   },
