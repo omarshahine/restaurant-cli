@@ -26,7 +26,7 @@ export const searchCommand = defineCommand({
       throw new CapabilityError(provider.id, "search");
     }
 
-    const creds = credentialsFor(providerId, config);
+    const creds = credentialsFor(providerId, config, provider);
     const venues = await provider.searchVenues(
       { query: args.query, ...(args.city ? { city: args.city } : {}), limit: Number(args.limit) },
       creds,
@@ -50,12 +50,21 @@ export const searchCommand = defineCommand({
   },
 });
 
-function credentialsFor(providerId: string, config: ReturnType<typeof loadConfig>): Credentials {
+function credentialsFor(
+  providerId: string,
+  config: ReturnType<typeof loadConfig>,
+  provider: { auth: { setupPrompts(): Array<unknown> } },
+): Credentials {
   const pc = config.providers[providerId];
-  if (!pc) throw new AuthError(`No config for provider "${providerId}". Run: restaurant setup ${providerId}`);
+  const needsConfig = provider.auth.setupPrompts().length > 0;
+  if (!pc && needsConfig) {
+    throw new AuthError(
+      `No config for provider "${providerId}". Run: restaurant setup ${providerId}`,
+    );
+  }
 
   const creds: Credentials = {};
-  for (const [k, v] of Object.entries(pc)) {
+  for (const [k, v] of Object.entries(pc ?? {})) {
     if (k === "tokenRef" || k === "token") continue;
     if (typeof v === "string") creds[k] = v;
   }
@@ -64,8 +73,10 @@ function credentialsFor(providerId: string, config: ReturnType<typeof loadConfig
   // convention; pull it into `authToken` so the provider's auth.ts can read
   // it uniformly. If the provider stores multiple sensitive keys, config can
   // express them via additional *Ref entries.
-  const token = resolveSecret(pc.tokenRef) ?? resolveSecret(pc.token) ?? undefined;
-  if (token) creds["authToken"] = token;
+  const tokenRef = pc?.tokenRef;
+  const token = pc?.token;
+  const resolved = resolveSecret(tokenRef) ?? resolveSecret(token) ?? undefined;
+  if (resolved) creds["authToken"] = resolved;
 
   // Resy needs an apiKey too. Sourced from process.env at runtime unless the
   // user inlined it into config (discouraged).

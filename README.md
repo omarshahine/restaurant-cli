@@ -54,11 +54,11 @@ Never uses macOS Keychain.
 | Command | Status |
 |---|---|
 | `setup <provider>` | M1 ✓ |
-| `search <query>` | M1 ✓ (Resy + OpenTable) |
+| `search <query>` | M1 ✓ (Resy) |
 | `doctor` | M1 ✓ |
 | `version` | M1 ✓ |
-| `availability` | Resy: M2 / OpenTable: ✓ |
-| `book` | Resy: M2 / OpenTable: hand-off URL |
+| `availability` | Resy: M2 |
+| `book` | Resy: M2 |
 | `list` | M2 |
 | `cancel` | M2 |
 | `snipe` | M3 |
@@ -69,9 +69,11 @@ Never uses macOS Keychain.
 | Provider | search | availability | book | cancel | list | snipe | bookUrl |
 |---|---|---|---|---|---|---|---|
 | Resy | ✓ | M2 | M2 | M2 | M2 | M3 | — |
-| OpenTable | ✓ | ✓ | — | — | — | — | ✓ |
+| OpenTable | — | — | — | — | — | — | ✓ |
 
-OpenTable has no public consumer API. Search and availability use the reverse-engineered `/dapi/` endpoints the opentable.com React app itself calls. Booking completion requires driving a real browser session and is intentionally deferred (safety: agents that automate the full OpenTable flow accidentally confirm real reservations). For now OpenTable produces a deep link you click to complete the booking in your browser with your OpenTable account.
+OpenTable has no public consumer API, and its `/dapi/` endpoints are protected by Akamai Bot Manager — live probing (2026-04) confirmed that pure-Node/curl HTTP gets a 403 regardless of header spoofing, because the block is TLS-fingerprint-level. The one capability that honestly works today is `bookUrl`: OpenTable produces a deep link you click to complete the booking in your browser with your OpenTable account.
+
+The HTTP parser code (`src/providers/opentable/{client,search,availability}.ts`) is kept as scaffolding for a future browser-automation module (Chrome CDP) which will feed real response JSON through the same parsers. When that lands, the relevant `capabilities` flags flip to true with no other change.
 
 ## Attribution
 

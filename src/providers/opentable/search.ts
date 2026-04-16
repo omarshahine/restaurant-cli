@@ -20,23 +20,17 @@ interface GraphQLSearchResponse {
 }
 
 /**
- * Search OpenTable restaurants by free-text query. No credentials required
- * (the /dapi/ endpoint works anonymously with browser-ish headers).
+ * Pure parser: `/dapi/fe/graphql` response → Venue[]. Kept independent of
+ * the HTTP transport so a future browser-automation module can feed the
+ * same JSON shape (captured via CDP) through this function.
  */
-export async function searchVenues(q: VenueQuery, _creds: Credentials): Promise<Venue[]> {
-  const client = new OpenTableClient();
-  const raw = (await client.searchRestaurants({
-    term: q.query,
-    covers: 2,
-    first: q.limit ?? 20,
-  })) as GraphQLSearchResponse;
-
-  if (raw?.errors?.length) {
-    // GraphQL-level error. Surface the first message; keep the rest in raw.
-    throw new Error(`OpenTable search: ${raw.errors[0]?.message ?? "unknown error"}`);
+export function parseSearchResponse(raw: unknown): Venue[] {
+  const g = raw as GraphQLSearchResponse;
+  if (g?.errors?.length) {
+    throw new Error(`OpenTable search: ${g.errors[0]?.message ?? "unknown error"}`);
   }
 
-  const results = raw?.data?.search?.results ?? [];
+  const results = g?.data?.search?.results ?? [];
   return results
     .map((hit): Venue | null => {
       const r = hit.restaurant;
@@ -58,4 +52,19 @@ export async function searchVenues(q: VenueQuery, _creds: Credentials): Promise<
       };
     })
     .filter((v): v is Venue => v !== null);
+}
+
+/**
+ * Live search. Not wired into the Provider surface because the HTTP
+ * transport is blocked by Akamai. Kept here so a future browser-backed
+ * fetcher can call it by swapping the `fetchImpl` in OpenTableClient.
+ */
+export async function searchVenues(q: VenueQuery, _creds: Credentials): Promise<Venue[]> {
+  const client = new OpenTableClient();
+  const raw = await client.searchRestaurants({
+    term: q.query,
+    covers: 2,
+    first: q.limit ?? 20,
+  });
+  return parseSearchResponse(raw);
 }
