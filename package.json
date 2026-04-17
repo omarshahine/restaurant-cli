@@ -91,6 +91,7 @@
     "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test"
   },
   "dependencies": {
+    "@inquirer/password": "^5.0.11",
     "@sinclair/typebox": "^0.34.48",
     "citty": "^0.1.6",
     "pino": "^9.5.0",

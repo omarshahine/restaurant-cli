@@ -60,6 +60,11 @@ export interface SetupPrompt {
   sensitive: boolean;
   /** If present, stored as an env var name in ~/.secrets.env (sensitive only). */
   envVar?: string;
+  /**
+   * If true, the answer is fed to `auth.login()` and discarded — never
+   * persisted. Used for passwords that get exchanged for durable tokens.
+   */
+  ephemeral?: boolean;
 }
 
 export interface Venue {
@@ -146,6 +151,13 @@ export interface Provider {
   auth: {
     validate(creds: Credentials): Promise<AuthStatus>;
     setupPrompts(): SetupPrompt[];
+    /**
+     * Optional. If present, `restaurant setup` runs it after collecting the
+     * setup prompts and uses the returned Credentials as the final creds to
+     * persist. Use this to exchange an email+password for a durable auth
+     * token so users never have to copy secrets out of DevTools.
+     */
+    login?(input: Credentials): Promise<Credentials>;
   };
 
   searchVenues(q: VenueQuery, creds: Credentials): Promise<Venue[]>;

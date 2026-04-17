@@ -21,3 +21,14 @@
 - Fixed latent bug in `doctor.ts` that OpenTable exposed: doctor skipped anonymous providers instead of running `auth.validate()`.
 - 19 tests passing (11 from M1 + 8 new for OpenTable). `restaurant doctor` now shows both providers with honest capabilities.
 - Open: (a) decide whether to prototype the M6 browser-book path next or return to M2 (Resy book) first, (b) live smoke test the `/dapi/` path against real OpenTable IDs, (c) push + publish (still held).
+
+## 2026-04-17
+
+- Replaced the DevTools-scavenger-hunt setup flow with email+password login. `restaurant setup resy` now prompts for email + password (hidden echo via `@inquirer/password`), calls `POST /3/auth/password`, and persists the returned JWT to `~/.secrets.env` as `RESY_AUTH_TOKEN` plus a config block that references it via `tokenRef`.
+- Extended the Provider seam with `auth.login?(creds)` and `SetupPrompt.ephemeral`. Ephemeral prompt answers (like passwords) are consumed by `login()` and never persisted. The CLI's `setup` command is now provider-agnostic — any future provider that implements `login()` gets the one-command flow for free.
+- `RESY_PUBLIC_API_KEY` is a plain constant in code and plaintext in `config.yaml` — it's Resy's shared frontend key, not a per-user secret.
+- Cleaned up latent bugs in `search.ts` and `doctor.ts` that required `RESY_API_KEY` env var (no longer needed now that the public key lives in code/config).
+- Fixed Resy venue URL construction to use the nested `location.code` + top-level `url_slug` — now produces `https://resy.com/cities/ny/carbone` instead of the double-slashed path.
+- **Verified live end-to-end**: setup → login → config persisted → `restaurant doctor` reports `resy auth: ok (Omar)` → `restaurant search "le bernardin"` returns real Resy venues (id 1387 for Le Bernardin, id 6194 for Carbone). First confirmed live provider query.
+- 23 tests passing (+2 for login parse/error path). Typecheck + build clean.
+- Open: (a) commit login-flow work to git, (b) decide whether to proceed to M2 (availability + book + cancel + list) or return to push / publish / OpenTable browser path.

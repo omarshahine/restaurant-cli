@@ -128,6 +128,20 @@ export class ResyClient {
     return this.request("GET", `/2/user`);
   }
 
+  /**
+   * Exchange email + password for a Resy auth token. Returns the full Resy
+   * user object including `token`, which is the JWT used on subsequent calls
+   * as `X-Resy-Auth-Token`.
+   *
+   * see resy-cli: internal/resy/login.go (same POST /3/auth/password shape)
+   */
+  async loginWithPassword(email: string, password: string): Promise<unknown> {
+    return this.request("POST", "/3/auth/password", {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ email, password }).toString(),
+    });
+  }
+
   private async request(
     method: "GET" | "POST",
     path: string,
