@@ -174,12 +174,11 @@ async function warmup(page: Page, ms: number = 4500): Promise<void> {
 }
 
 /**
- * Search OpenTable by sniffing the Autocomplete GraphQL response the page
- * makes as it renders.
+ * Search OpenTable by driving the homepage autocomplete and sniffing the
+ * `/dapi/fe/gql?opname=Autocomplete` response the page makes in reply.
  *
- * Status (2026-04-17): the launch + stealth config here is live-verified to
- * load the page past Akamai. Triggering a deterministic name-search call is
- * still TODO — the file-level comment has the next-session plan.
+ * Verified live (2026-04-17): 30-item restaurant list returned for typed
+ * queries. Parser lives in search.ts::parseAutocompleteResponse.
  */
 export async function searchViaBrowser(
   query: string,
@@ -202,13 +201,45 @@ export async function searchViaBrowser(
       }
     });
 
-    const url = `https://www.opentable.com/s?term=${encodeURIComponent(query)}`;
-    await handles.page.goto(url, { waitUntil: "domcontentloaded" });
+    await handles.page.goto("https://www.opentable.com/", {
+      waitUntil: "domcontentloaded",
+    });
     await warmup(handles.page);
 
-    // Return the last (most populated) Autocomplete response. Parsing moves
-    // to opentable/search.ts::parseAutocompleteResponse when we wire this up.
-    return responses.length ? responses[responses.length - 1] : null;
+    // Dismiss OneTrust cookie banner — without this, the search input
+    // receives clicks but the page doesn't respond to focus.
+    await handles.page.evaluate(
+      `(() => {
+        var ids = ['onetrust-accept-btn-handler','accept-recommended-btn-handler'];
+        for (var i=0; i<ids.length; i++) {
+          var el = document.getElementById(ids[i]);
+          if (el) { el.click(); return; }
+        }
+      })()`,
+    );
+    await handles.page.waitForTimeout(1000);
+
+    // Focus via JS (locator.type() trips on the OneTrust layer), then use
+    // page.keyboard.type so React's _valueTracker registers real keystrokes.
+    await handles.page.evaluate(
+      `(() => {
+        var el = document.getElementById('home-page-autocomplete-input');
+        if (el) { el.focus(); el.click(); }
+      })()`,
+    );
+    await handles.page.waitForTimeout(400);
+    await handles.page.keyboard.type(query, { delay: 70 });
+
+    // Wait for debounced autocomplete (~300ms debounce + network RTT).
+    await handles.page.waitForTimeout(3500);
+
+    // Return the biggest captured response — the last one is usually the
+    // fullest-term match. Parsing moves to search.ts.
+    if (!responses.length) return null;
+    const biggest = responses.reduce((a: any, b: any) =>
+      JSON.stringify(b).length > JSON.stringify(a).length ? b : a,
+    );
+    return biggest;
   } finally {
     await close(handles);
   }

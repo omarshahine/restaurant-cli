@@ -69,11 +69,11 @@ Never uses macOS Keychain.
 | Provider | search | availability | book | cancel | list | snipe | bookUrl |
 |---|---|---|---|---|---|---|---|
 | Resy | ✓ | M2 | M2 | M2 | M2 | M3 | — |
-| OpenTable | — | — | — | — | — | — | ✓ |
+| OpenTable | ✓ | — | — | — | — | — | ✓ |
 
-OpenTable has no public consumer API, and its `/dapi/` endpoints are protected by Akamai Bot Manager — live probing (2026-04) confirmed that pure-Node/curl HTTP gets a 403 regardless of header spoofing, because the block is TLS-fingerprint-level. The one capability that honestly works today is `bookUrl`: OpenTable produces a deep link you click to complete the booking in your browser with your OpenTable account.
+OpenTable has no public consumer API and Akamai Bot Manager blocks raw HTTP. Live venue search works via a browser-automation module: [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-nodejs) (stealth-patched Playwright fork) + persistent Chrome profile + channel:chrome + ~4.5s mouse jitter defeats Akamai reliably. The module drives `opentable.com`'s own homepage search and sniffs the `Autocomplete` GraphQL response. To use it: `npx playwright install chromium` + `pnpm add patchright` once, then `restaurant search "carbone" --provider opentable`.
 
-The HTTP parser code (`src/providers/opentable/{client,search,availability}.ts`) is kept as scaffolding for a future browser-automation module (Chrome CDP) which will feed real response JSON through the same parsers. When that lands, the relevant `capabilities` flags flip to true with no other change.
+Booking completion is intentionally **not** available through the browser path — OpenTable confirmation requires a logged-in session + real user interaction, and automated confirmation has historically tripped bot-detection *and* accidentally completed real reservations (see [mikehe123/opentable-reservations](https://github.com/mikehe123/opentable-reservations)). The `bookUrl` capability hands you a deep link to finish the booking yourself in your own browser.
 
 ## Attribution
 

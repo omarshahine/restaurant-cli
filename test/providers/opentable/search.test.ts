@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { parseSearchResponse } from "../../../src/providers/opentable/search.js";
-import { openTableProvider } from "../../../src/providers/opentable/provider.js";
+import {
+  parseSearchResponse,
+  parseAutocompleteResponse,
+} from "../../../src/providers/opentable/search.js";
 
-describe("providers/opentable/search", () => {
+describe("providers/opentable/search (legacy HTTP shape)", () => {
   it("normalizes the GraphQL search response into Venues", () => {
     const venues = parseSearchResponse({
       data: {
@@ -48,9 +50,61 @@ describe("providers/opentable/search", () => {
     expect(parseSearchResponse({ data: { search: { results: [] } } })).toEqual([]);
   });
 
-  it("Provider.searchVenues throws CapabilityError (HTTP blocked by Akamai)", async () => {
-    await expect(openTableProvider.searchVenues({ query: "x" }, {})).rejects.toThrow(
-      /HTTP blocked by Akamai/,
+});
+
+describe("providers/opentable/search (browser autocomplete parser)", () => {
+  it("filters autocomplete items to type=Restaurant and normalizes fields", () => {
+    const raw = {
+      data: {
+        autocomplete: {
+          autocompleteResults: [
+            {
+              id: "12345",
+              type: "Restaurant",
+              name: "Le Bernardin",
+              metroName: "New York",
+              neighborhoodName: "Midtown",
+              country: "United States",
+            },
+            {
+              id: "99",
+              type: "SuggestedSearch",
+              name: "French",
+            },
+            {
+              id: "67890",
+              type: "Restaurant",
+              name: "Bernardin's Charlotte",
+              metroName: "Charlotte",
+              neighborhoodName: "Uptown",
+            },
+          ],
+        },
+      },
+    };
+    const venues = parseAutocompleteResponse(raw);
+    expect(venues).toHaveLength(2);
+    expect(venues[0]!.id).toBe("12345");
+    expect(venues[0]!.name).toBe("Le Bernardin");
+    expect(venues[0]!.city).toBe("New York");
+    expect(venues[0]!.region).toBe("Midtown");
+  });
+
+  it("applies the limit", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      id: String(i),
+      type: "Restaurant",
+      name: `Restaurant ${i}`,
+    }));
+    const venues = parseAutocompleteResponse(
+      { data: { autocomplete: { autocompleteResults: many } } },
+      5,
     );
+    expect(venues).toHaveLength(5);
+  });
+
+  it("returns empty for missing data", () => {
+    expect(parseAutocompleteResponse({})).toEqual([]);
+    expect(parseAutocompleteResponse(null)).toEqual([]);
   });
 });

@@ -31,12 +31,12 @@ describe("providers/opentable/availability", () => {
     expect(slots[0]!.token).toContain("covers=2");
   });
 
-  it("Provider.getAvailability throws CapabilityError (HTTP blocked by Akamai)", async () => {
+  it("Provider.getAvailability throws CapabilityError (browser flow not yet wired)", async () => {
     await expect(
       openTableProvider.getAvailability(
         { venueId: "1", date: "2026-05-01", partySize: 2 },
         {},
       ),
-    ).rejects.toThrow(/HTTP blocked by Akamai/);
+    ).rejects.toThrow(/not yet wired/);
   });
 });

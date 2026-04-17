@@ -54,3 +54,13 @@
 - **What's still TODO**: turning access into deterministic search. Two sub-problems unresolved: (i) calling `/dapi/fe/gql` from within `page.evaluate` returns 403 (missing CSRF or persisted-query-hash headers), (ii) `locator.type()` into the searchbox times out (likely overlay or focus issue not yet debugged). Next attempt: either debug the typing path or scrape rendered DOM on `/r/<slug>` restaurant profile pages.
 - Updated `src/providers/opentable/browser.ts` with the verified-working launch/stealth config so the next session starts from a known-good base. Capabilities intentionally still `bookUrl: true` only — no pretending we can do search yet.
 - Committed: `ba406ec` (initial scaffold) → revised in-place on same branch.
+
+### Session 5 — OpenTable search goes live
+
+- Debugged why `locator.type()` timed out: OneTrust cookie consent banner was covering the page. Solution: programmatically click `onetrust-accept-btn-handler` / `accept-recommended-btn-handler` via `page.evaluate` before interacting.
+- Found that JS `value` setter + `input` event dispatch does NOT update React's internal `_valueTracker` — autocomplete fired but with a stale / generic term. Solution: `page.keyboard.type()` after JS-focusing the input dispatches real keyboard events that React honors.
+- End-to-end verified: `restaurant search "carbone" --provider opentable` returns 5 real OpenTable venues (Carbone Dallas, Carbone VINO Dallas/Coconut Grove, two Juarez ones). Search seam works.
+- Results are geo-biased by the persistent profile's last-known location (Cabo today, because our warmup landed there). Polish item: add a `--city` flag path that clicks the location picker first. Not blocking.
+- `capabilities.search` flipped to `true` for OpenTable. `availability/book/cancel/list/snipe` still `false` — different interaction flows needed.
+- Tests: 25 passing (+3 for `parseAutocompleteResponse`). Typecheck + build clean.
+- Open: (a) location targeting polish, (b) availability via `/r/<slug>` DOM scrape, (c) M2 Resy book/cancel/list/snipe.

@@ -23,9 +23,10 @@ describe("providers/registry", () => {
     expect(resy.capabilities.book).toBe(false); // M2
 
     const ot = r.get("opentable");
-    // OpenTable's HTTP read-path is blocked by Akamai; only the URL
-    // builder works reliably today. The provider is honest about this.
-    expect(ot.capabilities.search).toBe(false);
+    // OpenTable: browser-driven search is live (via patchright). Availability
+    // + book + cancel + list still require more engineering (or will use
+    // browser-automation that isn't wired yet) so they stay false.
+    expect(ot.capabilities.search).toBe(true);
     expect(ot.capabilities.availability).toBe(false);
     expect(ot.capabilities.book).toBe(false);
     expect(ot.capabilities.bookUrl).toBe(true);
