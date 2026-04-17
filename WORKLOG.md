@@ -32,3 +32,16 @@
 - **Verified live end-to-end**: setup → login → config persisted → `restaurant doctor` reports `resy auth: ok (Omar)` → `restaurant search "le bernardin"` returns real Resy venues (id 1387 for Le Bernardin, id 6194 for Carbone). First confirmed live provider query.
 - 23 tests passing (+2 for login parse/error path). Typecheck + build clean.
 - Open: (a) commit login-flow work to git, (b) decide whether to proceed to M2 (availability + book + cancel + list) or return to push / publish / OpenTable browser path.
+
+### Session 3 — push + OpenTable browser attempt
+
+- Pushed 4 commits to https://github.com/omarshahine/restaurant-cli (public, MIT).
+- Attempted OpenTable browser-driven read path to defeat Akamai. Tried three configurations live:
+  1. Playwright bundled Chromium (headless) → 403 Akamai edge block
+  2. Playwright `channel: "chrome"` + stealth init script → 403
+  3. Patchright (stealth fork) + system Chrome → 403
+- All three produced `title: Access Denied` with an `errors.edgesuite.net` reference. Confirmed via direct Playwright probes that homepage warmup + session delay don't help either.
+- Root cause (high confidence): IP reputation. ~8 probes from this Microsoft corp network flagged the egress IP at Akamai's edge. Not a defeatable-via-code problem from an OSS CLI.
+- Decision: **keep OpenTable capabilities as `bookUrl: true` only.** Browser scaffold (src/providers/opentable/browser.ts) stays in the repo as staging ground for a future attempt via one of: (a) CDP connection to user's already-running Chrome, (b) launchPersistentContext on a profile copy, (c) interactive first-run with user in the loop.
+- Dependencies added (both as optional peerDeps — don't bloat core install): `playwright` ^1.59.1, `patchright` ^1.59.4.
+- Open: (a) M2 (Resy availability + book + cancel + list), (b) publish to npm + ClawHub + omarshahine-plugins marketplace, (c) CDP-to-real-Chrome approach for OpenTable when we're ready to try again from a residential IP.

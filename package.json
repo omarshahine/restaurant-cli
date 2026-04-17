@@ -101,6 +101,8 @@
     "@types/node": "^22.10.0",
     "eslint": "^9.17.0",
     "nock": "^14.0.0-beta.19",
+    "patchright": "^1.59.4",
+    "playwright": "^1.59.1",
     "prettier": "^3.4.2",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
@@ -109,10 +111,14 @@
     "vitest": "^2.1.8"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.23"
+    "openclaw": ">=2026.3.23",
+    "playwright": ">=1.48.0"
   },
   "peerDependenciesMeta": {
     "openclaw": {
+      "optional": true
+    },
+    "playwright": {
       "optional": true
     }
   }
