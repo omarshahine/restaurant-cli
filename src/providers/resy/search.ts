@@ -10,6 +10,11 @@ interface ResySearchHit {
   city?: string;
   region?: string;
   url_slug?: string;
+  location?: {
+    name?: string;
+    code?: string;
+    url_slug?: string;
+  };
   _highlightResult?: unknown;
 }
 
@@ -39,12 +44,17 @@ export async function searchVenues(q: VenueQuery, creds: Credentials): Promise<V
     .map((h): Venue | null => {
       const id = h.objectID ?? (h.id?.resy !== undefined ? String(h.id.resy) : undefined);
       if (!id || !h.name) return null;
+      const cityCode = h.location?.code ?? h.city;
+      const cityName = h.location?.name ?? h.city;
+      const venueSlug = h.url_slug;
       return {
         id,
         name: h.name,
-        ...(h.city ? { city: h.city } : {}),
+        ...(cityName ? { city: cityName } : {}),
         ...(h.region ? { region: h.region } : {}),
-        ...(h.url_slug ? { url: `https://resy.com/cities/${h.city ?? ""}/${h.url_slug}` } : {}),
+        ...(cityCode && venueSlug
+          ? { url: `https://resy.com/cities/${cityCode}/${venueSlug}` }
+          : {}),
         raw: h,
       };
     })

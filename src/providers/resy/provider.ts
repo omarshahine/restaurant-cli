@@ -1,5 +1,5 @@
 import type { Provider } from "../types.js";
-import { resySetupPrompts, validateResy } from "./auth.js";
+import { loginResy, resySetupPrompts, validateResy } from "./auth.js";
 import { searchVenues } from "./search.js";
 import { getAvailability } from "./availability.js";
 import { book } from "./book.js";
@@ -24,6 +24,7 @@ export const resyProvider: Provider = {
   auth: {
     validate: validateResy,
     setupPrompts: resySetupPrompts,
+    login: loginResy,
   },
   searchVenues,
   getAvailability,

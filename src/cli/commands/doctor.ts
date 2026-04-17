@@ -53,7 +53,7 @@ export const doctorCommand = defineCommand({
   },
 });
 
-function buildCreds(providerId: string, pc: Record<string, unknown>): Credentials {
+function buildCreds(_providerId: string, pc: Record<string, unknown>): Credentials {
   const creds: Credentials = {};
   for (const [k, v] of Object.entries(pc)) {
     if (k === "tokenRef" || k === "token") continue;
@@ -61,9 +61,5 @@ function buildCreds(providerId: string, pc: Record<string, unknown>): Credential
   }
   const token = resolveSecret(pc["tokenRef"] as never) ?? resolveSecret(pc["token"] as never);
   if (token) creds["authToken"] = token;
-  if (providerId === "resy") {
-    const apiKey = process.env["RESY_API_KEY"];
-    if (apiKey) creds["apiKey"] = apiKey;
-  }
   return creds;
 }
