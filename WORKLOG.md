@@ -45,3 +45,12 @@
 - Decision: **keep OpenTable capabilities as `bookUrl: true` only.** Browser scaffold (src/providers/opentable/browser.ts) stays in the repo as staging ground for a future attempt via one of: (a) CDP connection to user's already-running Chrome, (b) launchPersistentContext on a profile copy, (c) interactive first-run with user in the loop.
 - Dependencies added (both as optional peerDeps — don't bloat core install): `playwright` ^1.59.1, `patchright` ^1.59.4.
 - Open: (a) M2 (Resy availability + book + cancel + list), (b) publish to npm + ClawHub + omarshahine-plugins marketplace, (c) CDP-to-real-Chrome approach for OpenTable when we're ready to try again from a residential IP.
+
+### Session 4 — OpenTable browser access cracked, scraping still TODO
+
+- Reopened the OpenTable browser path after establishing that Omar's real Chrome loads opentable.com fine (so the IP isn't fully blocked, just flagged against automation signatures).
+- Live-verified that **patchright** (stealth-patched Playwright fork) + `chromium.launchPersistentContext(profileDir, { channel: "chrome" })` + `headless: false` + ~4.5s of mouse jitter after navigation DEFEATS Akamai on opentable.com. Plain Playwright, patchright without a persistent profile, and channel-less invocations all fail with `title: Access Denied`.
+- Captured real GraphQL responses: `Autocomplete` (11KB, 30 results), `LocationPicker` (38KB), `RestaurantsAvailability` (66 bytes with our search term — empty, because `/s?term=X` expects a location+time). The page is reaching the real backend.
+- **What's still TODO**: turning access into deterministic search. Two sub-problems unresolved: (i) calling `/dapi/fe/gql` from within `page.evaluate` returns 403 (missing CSRF or persisted-query-hash headers), (ii) `locator.type()` into the searchbox times out (likely overlay or focus issue not yet debugged). Next attempt: either debug the typing path or scrape rendered DOM on `/r/<slug>` restaurant profile pages.
+- Updated `src/providers/opentable/browser.ts` with the verified-working launch/stealth config so the next session starts from a known-good base. Capabilities intentionally still `bookUrl: true` only — no pretending we can do search yet.
+- Committed: `ba406ec` (initial scaffold) → revised in-place on same branch.
