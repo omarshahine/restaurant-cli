@@ -1,48 +1,58 @@
 /**
- * Browser-driven OpenTable fetcher — SCAFFOLD, not yet defeating Akamai.
+ * Browser-driven OpenTable fetcher — ACCESS proven, SCRAPING still TODO.
  *
- * OpenTable's /dapi/ endpoints are protected by Akamai Bot Manager. Pure
- * Node fetch() gets 403 because Akamai reads the TLS fingerprint. We
- * expected that launching real Chromium (via Playwright with the `chrome`
- * channel + stealth init scripts + full UA) would defeat the block, but
- * live testing (2026-04-17) showed:
+ * OpenTable's /dapi/ endpoints are protected by Akamai Bot Manager. Live
+ * probing (2026-04-17) mapped the exact recipe that defeats the anti-bot
+ * check AND the follow-up combinations that extend its effectiveness:
  *
- *   - Playwright bundled Chromium → 403 at Akamai edge
- *   - System Chrome via `channel: "chrome"` + stealth → 403
- *   - Patchright (stealth fork) + system Chrome → 403
+ *   ✓ **Working recipe for page access**:
+ *     - `patchright` (stealth-patched Playwright fork), not plain `playwright`
+ *     - `chromium.launchPersistentContext(profileDir, { channel: "chrome" })` —
+ *       system Chrome binary, persistent profile to accumulate trust cookies
+ *     - `headless: false` (headless mode still trips Akamai's JS checks)
+ *     - Mouse-jitter interaction for ~4-5 seconds after navigation so
+ *       Akamai's client-side challenge JS passes
+ *     - `--disable-blink-features=AutomationControlled` launch arg
  *
- * All three produced `title: Access Denied` and an `errors.edgesuite.net`
- * reference, the hallmark Akamai edge block. This happens regardless of
- * warmup navigation, cookie jar state, or URL choice.
+ *   With those applied: navigation returns 200, title populates correctly
+ *   ("Restaurant Reservation Availability | OpenTable"), and the page's own
+ *   XHRs to `/dapi/fe/gql?opname=<Autocomplete|LocationPicker|...>` return
+ *   real structured JSON.
  *
- * Root cause (high confidence): IP reputation. Testing from a Microsoft
- * corp network after ~8 consecutive probes flagged the egress IP. Fresh
- * residential IPs or an already-trusted session cookie are likely
- * sufficient to unblock, but neither is available to a public OSS CLI
- * out of the box.
+ * What does NOT work yet (the remaining engineering):
+ *   - Calling `/dapi/fe/gql` from within page context via `fetch()` — 403.
+ *     The page's own fetches include headers (CSRF / persisted query hash /
+ *     ot-origin) that aren't obvious to replicate.
+ *   - `locator.type()` into the search input — times out, likely an overlay
+ *     or focus issue we didn't finish debugging.
  *
- * Viable paths forward, in descending order of OSS-friendliness:
- *   1. Connect to the user's already-running Chrome via CDP
- *      (`--remote-debugging-port`) — real profile, real cookies, real
- *      reputation. Requires user to launch Chrome with the flag once.
- *   2. `launchPersistentContext` against a copy of the user's Chrome
- *      profile directory. Conflicts with running Chrome; awkward UX.
- *   3. Interactive first-run: headed browser, user solves any challenge,
- *      cookies persist to a restaurant-cli-owned profile dir. Slow but
- *      portable.
- *   4. Paid residential proxy — rejected (not OSS-appropriate).
+ * What DOES work for harvesting data today:
+ *   - Observing the page's own XHRs via `page.on("response", ...)` and
+ *     filtering for `opname=<Autocomplete|RestaurantsAvailability>`. The
+ *     probe captured a real 11KB Autocomplete response with 30 results.
+ *     Turning that into a deterministic scrape needs triggering the page's
+ *     own search flow (typing in the box, or navigating to a URL the page
+ *     turns into a specific query).
  *
- * Until one of those lands, OpenTable capabilities stay
- * `bookUrl: true` only. This file is kept as scaffolding so the eventual
- * fix is a targeted change to `launch()` rather than a from-scratch
- * build.
+ * Next session plan:
+ *   1. Trigger the page's search via `page.keyboard.type()` after click;
+ *      debug why `locator.type()` times out.
+ *   2. Alternative: navigate to `/r/<slug>` restaurant profile pages and
+ *      scrape rendered availability tiles from the DOM (bypasses the GQL
+ *      request-shape problem entirely for known restaurants).
+ *   3. Wire a real `searchViaBrowser` → parseAutocomplete pipeline.
+ *   4. Flip `capabilities.search = true` in provider.ts.
  *
- * Safety invariant (inherited from mikehe123/opentable-reservations):
- * this module is READ-ONLY. Nothing in here can complete a booking.
+ * Until those land, OpenTable capabilities stay `bookUrl: true` only. The
+ * scaffolding below holds the verified-working launch/stealth config so
+ * the next attempt starts from a known-good base.
  *
- * Playwright is an *optional peerDependency*: the core CLI works without
- * it. `loadPlaywright()` dynamically imports at runtime so the module
- * stays loadable when Playwright isn't installed.
+ * Safety invariant (from mikehe123/opentable-reservations): this module is
+ * READ-ONLY. Nothing in here can complete a booking.
+ *
+ * Playwright and patchright are both optional peerDependencies. The core
+ * CLI works without them; `loadPlaywright()` dynamically imports at call
+ * time.
  */
 
 // Type-only import so tsc is happy even when playwright isn't installed at
@@ -59,12 +69,21 @@ export interface BrowserFetchOptions {
 type PlaywrightModule = typeof import("playwright");
 
 async function loadPlaywright(): Promise<PlaywrightModule> {
+  // Prefer patchright (stealth-patched) when available; fall back to plain
+  // playwright. Patchright is the difference between "Akamai serves an
+  // Access Denied page after a ~10s JS challenge" and "Akamai passes."
+  try {
+    return (await import("patchright" as string)) as PlaywrightModule;
+  } catch {
+    /* fallthrough to playwright */
+  }
   try {
     return (await import("playwright")) as PlaywrightModule;
   } catch (e) {
     throw new Error(
-      "Playwright is not installed. Enable OpenTable live data with:\n" +
-        "  npm i -g playwright && npx playwright install chromium\n" +
+      "Neither `patchright` nor `playwright` is installed. For OpenTable " +
+        "live data, install patchright (better stealth):\n" +
+        "  npm i -g patchright && npx playwright install chromium\n" +
         `(original error: ${(e as Error).message})`,
     );
   }
@@ -87,41 +106,39 @@ const STEALTH_INIT_SCRIPT = `
 const REAL_CHROME_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+/**
+ * Launch a browser with the stealth + profile combo live-verified to defeat
+ * Akamai on opentable.com. The profile dir is reused across calls so trust
+ * cookies accumulate — do not delete it casually.
+ */
 async function launch(
   opts: BrowserFetchOptions = {},
-): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
+): Promise<{ browser: Browser | null; context: BrowserContext; page: Page }> {
   const pw = await loadPlaywright();
   const headed = opts.headed ?? process.env["RESTAURANT_CLI_HEADED"] === "1";
-  // Prefer the system Chrome channel when available — Akamai is much more
-  // forgiving of a real Chrome binary than of Playwright's bundled Chromium.
-  // `channel: "chrome"` requires Chrome installed on the system. Fall back
-  // to Playwright's Chromium if it isn't.
   const useSystemChrome = process.env["RESTAURANT_CLI_BROWSER_CHANNEL"] !== "chromium";
-  const browser = await pw.chromium.launch({
-    headless: !headed,
+  const profileDir =
+    process.env["RESTAURANT_CLI_OT_PROFILE_DIR"] ??
+    `${process.env["HOME"]}/.cache/restaurant-cli/chrome-profile-opentable`;
+
+  const context = await pw.chromium.launchPersistentContext(profileDir, {
+    headless: !headed && false /* force headed until headless trust path is proven */,
     ...(useSystemChrome ? { channel: "chrome" } : {}),
+    viewport: { width: 1400, height: 900 },
+    locale: "en-US",
+    timezoneId: "America/Los_Angeles",
     args: [
       "--disable-blink-features=AutomationControlled",
       "--disable-features=IsolateOrigins,site-per-process",
     ],
   });
-  const context = await browser.newContext({
-    userAgent: REAL_CHROME_UA,
-    viewport: { width: 1400, height: 900 },
-    locale: "en-US",
-    timezoneId: "America/Los_Angeles",
-    extraHTTPHeaders: {
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-  });
-  await context.addInitScript(STEALTH_INIT_SCRIPT);
-  const page = await context.newPage();
+  const page = context.pages()[0] ?? (await context.newPage());
   page.setDefaultTimeout(opts.timeoutMs ?? 30000);
-  return { browser, context, page };
+  return { browser: null, context, page };
 }
 
 async function close(
-  handles: { browser: Browser; context: BrowserContext; page: Page },
+  handles: { browser: Browser | null; context: BrowserContext; page: Page },
 ): Promise<void> {
   try {
     await handles.page.close();
@@ -133,19 +150,36 @@ async function close(
   } catch {
     /* ignore */
   }
-  try {
-    await handles.browser.close();
-  } catch {
-    /* ignore */
+  if (handles.browser) {
+    try {
+      await handles.browser.close();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
 /**
- * Search OpenTable via the real search page. We navigate to
- * `opentable.com/s?term=<q>` and let the page's React app populate its
- * `__NEXT_DATA__` blob, then extract the embedded search-result JSON
- * from page context. This avoids ever making a direct /dapi/ call that
- * Akamai would 403.
+ * Human-ish wait to let Akamai's client-side challenge JS finish and pass.
+ * Mouse movement is the signal Akamai weights most.
+ */
+async function warmup(page: Page, ms: number = 4500): Promise<void> {
+  const start = Date.now();
+  let i = 0;
+  while (Date.now() - start < ms) {
+    await page.mouse.move(100 + i * 50, 200 + ((i * 37) % 400));
+    await page.waitForTimeout(400);
+    i++;
+  }
+}
+
+/**
+ * Search OpenTable by sniffing the Autocomplete GraphQL response the page
+ * makes as it renders.
+ *
+ * Status (2026-04-17): the launch + stealth config here is live-verified to
+ * load the page past Akamai. Triggering a deterministic name-search call is
+ * still TODO — the file-level comment has the next-session plan.
  */
 export async function searchViaBrowser(
   query: string,
@@ -154,20 +188,27 @@ export async function searchViaBrowser(
 ): Promise<unknown> {
   const handles = await launch(launchOpts);
   try {
+    const responses: unknown[] = [];
+    handles.page.on("response", async (resp) => {
+      const u = resp.url();
+      if (!u.includes("opname=Autocomplete")) return;
+      try {
+        const ct = resp.headers()["content-type"] ?? "";
+        if (!ct.includes("json")) return;
+        const body = await resp.text();
+        if (body.length > 200) responses.push(JSON.parse(body));
+      } catch {
+        /* ignore */
+      }
+    });
+
     const url = `https://www.opentable.com/s?term=${encodeURIComponent(query)}`;
     await handles.page.goto(url, { waitUntil: "domcontentloaded" });
+    await warmup(handles.page);
 
-    // Wait for the search results script tag to mount. OpenTable's Next.js
-    // hydrates search data into window.__NEXT_DATA__. We evaluate a string
-    // so we don't need the DOM lib in the Node tsconfig.
-    const data = await handles.page.evaluate(
-      `(() => {
-        var n = document.getElementById('__NEXT_DATA__');
-        if (n && n.textContent) { try { return JSON.parse(n.textContent); } catch (e) {} }
-        return null;
-      })()`,
-    );
-    return data;
+    // Return the last (most populated) Autocomplete response. Parsing moves
+    // to opentable/search.ts::parseAutocompleteResponse when we wire this up.
+    return responses.length ? responses[responses.length - 1] : null;
   } finally {
     await close(handles);
   }
