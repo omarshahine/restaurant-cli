@@ -78,12 +78,5 @@ function credentialsFor(
   const resolved = resolveSecret(tokenRef) ?? resolveSecret(token) ?? undefined;
   if (resolved) creds["authToken"] = resolved;
 
-  // Resy needs an apiKey too. Sourced from process.env at runtime unless the
-  // user inlined it into config (discouraged).
-  if (providerId === "resy" && !creds["apiKey"]) {
-    const apiKey = process.env["RESY_API_KEY"];
-    if (apiKey) creds["apiKey"] = apiKey;
-  }
-
   return creds;
 }
