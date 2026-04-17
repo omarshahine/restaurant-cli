@@ -1,8 +1,6 @@
 import type { AuthStatus, BookRequest, BookResult, Credentials, Provider, Reservation } from "../types.js";
 import { CapabilityError } from "../../core/errors.js";
-// Parsers in ./search.ts and ./availability.ts are kept for future
-// reuse by a browser-automation read-path. They are not wired into the
-// live provider surface today because their HTTP transport is blocked.
+import { searchVenues } from "./search.js";
 import { buildBookingUrl } from "./deeplink.js";
 
 /**
@@ -29,9 +27,9 @@ export const openTableProvider: Provider = {
   id: "opentable",
   displayName: "OpenTable",
   capabilities: {
-    // HTTP-based search/availability blocked by Akamai. Will flip to true
-    // when a browser-automation read-path lands.
-    search: false,
+    // Browser-driven search live as of 2026-04-17. Availability still TODO
+    // (requires different interaction flow than searchbox autocomplete).
+    search: true,
     availability: false,
     book: false,
     cancel: false,
@@ -43,21 +41,16 @@ export const openTableProvider: Provider = {
     async validate(_creds: Credentials): Promise<AuthStatus> {
       return {
         ok: true,
-        detail: "bookUrl only (live HTTP blocked by Akamai; browser module TBD)",
+        detail: "anonymous (browser-driven search via patchright)",
       };
     },
     setupPrompts: () => [],
   },
-  async searchVenues(_q, _creds) {
-    throw new CapabilityError(
-      "opentable",
-      "search (HTTP blocked by Akamai; use --provider resy or the future browser module)",
-    );
-  },
+  searchVenues,
   async getAvailability(_q, _creds) {
     throw new CapabilityError(
       "opentable",
-      "availability (HTTP blocked by Akamai; use --provider resy or the future browser module)",
+      "availability (browser-driven flow not yet wired; use bookUrl for known venues)",
     );
   },
   async book(_r: BookRequest, _creds: Credentials): Promise<BookResult> {
