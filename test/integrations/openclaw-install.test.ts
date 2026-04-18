@@ -19,6 +19,7 @@ import {
 describe("integrations/openclaw/install", () => {
   let workDir: string;
   let configPath: string;
+  const RESY_KEYS = new Set(["resy_apiKey", "resy_authToken"]);
 
   beforeEach(() => {
     workDir = mkdtempSync(join(tmpdir(), "restaurant-cli-openclaw-"));
@@ -64,14 +65,16 @@ describe("integrations/openclaw/install", () => {
       plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} },
     });
 
-    const result = mirrorCredentialsToOpenClaw("resy", {
-      apiKey: "pk_123",
-      authToken: "tok_456",
-    });
+    const result = mirrorCredentialsToOpenClaw(
+      "resy",
+      { apiKey: "pk_123", authToken: "tok_456" },
+      { allowedKeys: RESY_KEYS },
+    );
 
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
     expect(result.updated.sort()).toEqual(["resy_apiKey", "resy_authToken"]);
+    expect(result.removed).toEqual([]);
 
     const cfg = readConfig();
     const entry = (cfg["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
@@ -82,35 +85,104 @@ describe("integrations/openclaw/install", () => {
     });
   });
 
+  it("filters out keys not declared in the schema (e.g. email, firstName)", () => {
+    writeConfig({ plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} } });
+
+    const result = mirrorCredentialsToOpenClaw(
+      "resy",
+      {
+        apiKey: "pk_123",
+        authToken: "tok_456",
+        email: "omar@shahine.com",
+        firstName: "Omar",
+      },
+      { allowedKeys: RESY_KEYS },
+    );
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
+    expect(Object.keys(entry.config).sort()).toEqual(["resy_apiKey", "resy_authToken"]);
+    expect(entry.config).not.toHaveProperty("resy_email");
+    expect(entry.config).not.toHaveProperty("resy_firstName");
+  });
+
+  it("prunes stale provider-prefixed keys that are no longer in the schema", () => {
+    writeConfig({
+      plugins: {
+        allow: [OPENCLAW_PLUGIN_ID],
+        entries: {
+          [OPENCLAW_PLUGIN_ID]: {
+            enabled: true,
+            config: {
+              resy_authToken: "old_tok",
+              resy_email: "leftover@example.com", // stale — not in schema
+              resy_firstName: "Leftover", // stale — not in schema
+              opentable_sessionId: "keep_me", // DIFFERENT provider — must survive
+            },
+          },
+        },
+      },
+    });
+
+    const result = mirrorCredentialsToOpenClaw(
+      "resy",
+      { authToken: "new_tok" },
+      { allowedKeys: RESY_KEYS },
+    );
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.updated).toEqual(["resy_authToken"]);
+    expect(result.removed.sort()).toEqual(["resy_email", "resy_firstName"]);
+
+    const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
+    expect(entry.config).toEqual({
+      resy_authToken: "new_tok",
+      opentable_sessionId: "keep_me",
+    });
+  });
+
   it("skips empty values and the reserved 'password' field", () => {
     writeConfig({
       plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} },
     });
 
-    const result = mirrorCredentialsToOpenClaw("resy", {
-      authToken: "tok_456",
-      password: "hunter2", // must never persist
-      email: "", // empty → skip
-    });
+    const result = mirrorCredentialsToOpenClaw(
+      "resy",
+      {
+        authToken: "tok_456",
+        password: "hunter2", // must never persist
+        apiKey: "", // empty → skip
+      },
+      { allowedKeys: RESY_KEYS },
+    );
 
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
     const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
     expect(entry.config).toEqual({ resy_authToken: "tok_456" });
-    expect(Object.keys(entry.config)).not.toContain("resy_password");
-    expect(Object.keys(entry.config)).not.toContain("resy_email");
   });
 
   it("is idempotent — re-running with same creds makes no changes", () => {
     writeConfig({ plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} } });
 
-    const first = mirrorCredentialsToOpenClaw("resy", { authToken: "tok" });
+    const first = mirrorCredentialsToOpenClaw(
+      "resy",
+      { authToken: "tok" },
+      { allowedKeys: RESY_KEYS },
+    );
     expect(first.status === "ok" && first.updated.length).toBe(1);
 
-    const second = mirrorCredentialsToOpenClaw("resy", { authToken: "tok" });
+    const second = mirrorCredentialsToOpenClaw(
+      "resy",
+      { authToken: "tok" },
+      { allowedKeys: RESY_KEYS },
+    );
     expect(second.status).toBe("ok");
     if (second.status !== "ok") return;
     expect(second.updated).toEqual([]);
+    expect(second.removed).toEqual([]);
   });
 
   it("preserves unrelated plugin entries", () => {
@@ -123,7 +195,7 @@ describe("integrations/openclaw/install", () => {
       },
     });
 
-    mirrorCredentialsToOpenClaw("resy", { authToken: "tok" });
+    mirrorCredentialsToOpenClaw("resy", { authToken: "tok" }, { allowedKeys: RESY_KEYS });
 
     const cfg = readConfig() as any;
     expect(cfg.plugins.entries["other-plugin"]).toEqual({
@@ -136,13 +208,31 @@ describe("integrations/openclaw/install", () => {
     writeConfig({ plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} } });
     const before = readFileSync(configPath, "utf8");
 
-    mirrorCredentialsToOpenClaw("resy", { authToken: "tok" });
+    mirrorCredentialsToOpenClaw("resy", { authToken: "tok" }, { allowedKeys: RESY_KEYS });
 
     const backups = readdirSync(join(workDir, ".openclaw")).filter((f) =>
       f.startsWith("openclaw.json.bak.restaurant-"),
     );
     expect(backups.length).toBe(1);
     expect(readFileSync(join(workDir, ".openclaw", backups[0]!), "utf8")).toBe(before);
+  });
+
+  it("loads schema keys from the plugin manifest when allowedKeys omitted", () => {
+    // No explicit allowedKeys — relies on the manifest walk-up finding
+    // the real openclaw.plugin.json in the repo root. Verifies resy_email
+    // (not in schema) is dropped while resy_authToken (in schema) lands.
+    writeConfig({ plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} } });
+
+    const result = mirrorCredentialsToOpenClaw("resy", {
+      authToken: "tok",
+      email: "omar@shahine.com",
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
+    expect(entry.config).toHaveProperty("resy_authToken", "tok");
+    expect(entry.config).not.toHaveProperty("resy_email");
   });
 
   it("openClawConfigPath points at ~/.openclaw/openclaw.json", () => {
