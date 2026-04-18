@@ -1,58 +1,127 @@
 ---
 name: restaurant
-description: |
-  Book restaurant reservations via the `restaurant` CLI (backed by Resy, OpenTable, Tock, and other pluggable providers). Use when:
-  - User asks to book, search, or manage a restaurant reservation
-  - User mentions "Resy", "OpenTable", "Tock", or "SevenRooms"
-  - User mentions a restaurant name and a date/time
-  - User says "snipe that reservation" or mentions a release-time booking
-  - User wants to list or cancel upcoming dining reservations
-  - User mentions a "reservation window" or "when slots open"
+description: This skill should be used when the user asks to "book a restaurant", "make a reservation", "search for dinner", "check availability at", "snipe a reservation", "cancel a reservation", or mentions a restaurant name alongside a date/time. Covers reservation management across Resy, OpenTable, Tock, and SevenRooms via the `restaurant` CLI (Claude Code context) or the `restaurant_*` tools (OpenClaw context).
 ---
 
-# restaurant
+# Restaurant reservations
 
-The `restaurant` CLI wraps multiple reservation platforms behind a single command surface. The CLI is installed via `npm i -g restaurant-cli`.
+Book, search, cancel, and schedule future bookings ("snipes") across multiple reservation platforms behind a single pluggable surface. Every provider (Resy, OpenTable, and future peers) is implemented as an independent module plugged into the same interface — the tools and CLI dispatch through a shared registry.
 
-## Quick reference
+## Pick an execution path
+
+Choose based on the tools available in the current session:
+
+1. **`restaurant_*` tools present** (OpenClaw host) — call the tools directly. Parameters documented under *OpenClaw tools* below.
+2. **No `restaurant_*` tools** (Claude Code host or plain shell) — shell out to the `restaurant` CLI via Bash. For complex or ambiguous requests, delegate to the `restaurant-router` agent rather than executing directly.
+
+Both paths share one backend, so results are identical — only the calling convention differs. Never invoke a provider's API directly; the plugin's safety invariants (e.g. OpenTable: never auto-submit a booking) live in the CLI and tools.
+
+## Provider capabilities (2026-04)
+
+| Provider    | search | availability | book | cancel | list | snipe | bookUrl |
+|-------------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Resy        | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| OpenTable   | ✓ | — | — | — | — | — | ✓ |
+| Tock        | — | — | — | — | — | — | — |
+| SevenRooms  | — | — | — | — | — | — | — |
+
+OpenTable cannot complete bookings via API; the `bookUrl` capability returns a deep link for the user to confirm in their own browser. Always verify capabilities via `restaurant doctor` (CLI) or the tool's own error handling (OpenClaw) rather than assuming from this table.
+
+## CLI quick reference
+
+One-time auth per provider:
 
 ```bash
-restaurant setup resy                                    # one-time credential setup per provider
-restaurant doctor                                        # verify config + auth + scheduler health
-restaurant search "le bernardin"                         # venue search (default provider)
-restaurant search "le bernardin" --provider opentable    # cross-provider
+restaurant setup resy              # CLI store only (~/.secrets.env + config.yaml)
+restaurant setup resy-openclaw     # also mirrors creds into ~/.openclaw/openclaw.json
+restaurant doctor                  # verify config, auth, scheduler health
+```
 
-restaurant availability --venue 1387 --date 2026-05-01 --party 2
-restaurant book --venue 1387 --date 2026-05-01 --time 19:30 --party 2
-restaurant list [--upcoming]
+Search, check availability, book:
+
+```bash
+restaurant search "le bernardin"                    # default provider
+restaurant search "carbone" --provider opentable    # cross-provider
+restaurant availability --venue 1387 --date 2026-05-15 --party 2
+restaurant book --venue 1387 --date 2026-05-15 --time 19:30 --party 2
+```
+
+List and cancel:
+
+```bash
+restaurant list --upcoming
 restaurant cancel <reservation-id>
+```
 
-restaurant snipe --venue 1387 --date 2026-05-01 --time 19:30 --party 2 \
+Snipe — queue a booking for a specific future release time:
+
+```bash
+restaurant snipe --venue 1387 --date 2026-05-15 --time 19:30 --party 2 \
                  --release-at 2026-04-30T10:00-07:00
 restaurant jobs list
 restaurant jobs cancel <job-id>
 restaurant jobs logs <job-id>
 ```
 
-All destructive commands (`book`, `cancel`, `snipe`, `jobs cancel`) prompt for y/N confirmation unless you pass `--yes`.
+All destructive commands (`book`, `cancel`, `snipe`, `jobs cancel`) prompt `y/N` unless `--yes` is passed.
 
-## Provider capabilities as of 2026-04
+## OpenClaw tools
 
-| Provider | search | availability | book | cancel | list | snipe | bookUrl |
-|---|---|---|---|---|---|---|---|
-| Resy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
-| OpenTable | ✓ | — | — | — | — | — | ✓ |
+Six provider-agnostic tools. All accept an optional `provider` string; when omitted the configured default applies.
 
-OpenTable can't complete bookings through the API — the `bookUrl` capability hands back a deep link you open in your own browser to confirm. OpenTable search runs via browser automation (patchright + persistent Chrome profile) so the first invocation may prompt for Chrome to open.
+| Tool | Purpose | Key parameters |
+|------|---------|----------------|
+| `restaurant_search`         | Venue search                                | `query`, `city?`, `limit?` |
+| `restaurant_availability`   | Open slots for a date                       | `venueId`, `date`, `partySize` |
+| `restaurant_book`           | Book immediately                            | `venueId`, `date`, `time`, `partySize`, `slotToken?`, `notes?` |
+| `restaurant_schedule_snipe` | Queue a future booking at a release time    | `venueId`, `date`, `time`, `partySize`, `releaseAt` |
+| `restaurant_list`           | List upcoming/past reservations             | `upcoming?` |
+| `restaurant_cancel`         | Cancel a reservation                        | `reservationId` |
 
-Always call `restaurant doctor` before trying a provider-specific action — capabilities are the source of truth, not this table.
+Format conventions:
 
-## Configuration
+- Dates: `YYYY-MM-DD`
+- Times: `HH:mm` (24-hour)
+- `releaseAt`: ISO-8601 with offset, e.g. `2026-04-30T10:00-07:00`
+- `slotToken`: provider-specific token returned by a prior `restaurant_availability` call; omit to re-lookup at book time
 
-- Config: `~/.config/restaurant-cli/config.yaml`
+Tool results are text-only (JSON stringified in the `text` content). Parse before acting.
+
+## Routing in Claude Code
+
+For multi-venue searches, ambiguous provider intent, or any multi-step booking flow, invoke the `restaurant-router` agent via the Task tool rather than executing directly. The router inspects `restaurant doctor` output to pick the right provider agent (`resy-agent`, `opentable-agent`) based on the capabilities that are actually live.
+
+Slash commands auto-route through the router:
+
+- `/restaurant <request>` — generic entry point
+- `/restaurant-book <args>` — immediate booking intent
+- `/restaurant-snipe <args>` — schedule a future booking
+- `/restaurant-setup <provider>` — interactive provider auth
+- `/restaurant-jobs list|cancel|logs` — inspect scheduled snipes
+
+## Config and secrets
+
+- CLI config: `~/.config/restaurant-cli/config.yaml`
 - Secrets: `~/.secrets.env` (never macOS Keychain)
-- Run `restaurant config path` to get the config location
+- OpenClaw plugin config: `~/.openclaw/openclaw.json` → `plugins.entries.restaurant-cli.config`
 
-## Routing
+Append `-openclaw` to any `restaurant setup <provider>` invocation to mirror the resulting credentials into the OpenClaw plugin config in addition to the CLI store — the plugin reads only from `pluginConfig`, so this bridge step is required for the OpenClaw tools to find credentials.
 
-Any booking request should go through the `restaurant-router` agent first — it reads `restaurant doctor` to pick the right provider agent (`resy-agent`, `opentable-agent`) based on user intent and available capabilities.
+Run `restaurant config path` to print the CLI config location without parsing help output.
+
+## Provider-specific notes
+
+- **Resy**: `restaurant setup resy[-openclaw]` prompts for email/password, exchanges credentials for an auth token, and persists it. The public `RESY_API_KEY` has a built-in default; provide a custom one only when overriding.
+- **OpenTable**: anonymous — no auth flow. Requires the `patchright` peer dep for browser-driven search:
+  ```bash
+  pnpm add patchright
+  npx playwright install chromium
+  ```
+  Bookings are deep-link hand-offs: the CLI returns a URL, the user confirms in their own browser.
+- **Tock / SevenRooms**: not yet implemented. Attempts surface a `CapabilityError`.
+
+## Safety invariants
+
+- Never auto-submit an OpenTable booking — always hand off to the user's browser.
+- Confirm venue identity before booking when the user gave a name: run `restaurant search "<name>"` first and verify the matching `venueId` with the user.
+- Treat scheduled snipes as commitments: when the user says "snipe this", the `releaseAt` defaults to the venue's reservation-window opening; verify the time with the user when ambiguous.
