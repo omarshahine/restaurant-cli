@@ -1,9 +1,8 @@
 import { defineCommand } from "citty";
 import { buildRegistry } from "../../providers/bootstrap.js";
 import { loadConfig } from "../../core/config.js";
-import { resolveSecret } from "../../core/secrets.js";
-import { AuthError, CapabilityError } from "../../core/errors.js";
-import type { Credentials } from "../../providers/types.js";
+import { CapabilityError } from "../../core/errors.js";
+import { credentialsFor } from "../credentials.js";
 
 export const searchCommand = defineCommand({
   meta: {
@@ -50,33 +49,3 @@ export const searchCommand = defineCommand({
   },
 });
 
-function credentialsFor(
-  providerId: string,
-  config: ReturnType<typeof loadConfig>,
-  provider: { auth: { setupPrompts(): Array<unknown> } },
-): Credentials {
-  const pc = config.providers[providerId];
-  const needsConfig = provider.auth.setupPrompts().length > 0;
-  if (!pc && needsConfig) {
-    throw new AuthError(
-      `No config for provider "${providerId}". Run: restaurant setup ${providerId}`,
-    );
-  }
-
-  const creds: Credentials = {};
-  for (const [k, v] of Object.entries(pc ?? {})) {
-    if (k === "tokenRef" || k === "token") continue;
-    if (typeof v === "string") creds[k] = v;
-  }
-
-  // Resy wants apiKey + authToken. We store the auth token via tokenRef by
-  // convention; pull it into `authToken` so the provider's auth.ts can read
-  // it uniformly. If the provider stores multiple sensitive keys, config can
-  // express them via additional *Ref entries.
-  const tokenRef = pc?.tokenRef;
-  const token = pc?.token;
-  const resolved = resolveSecret(tokenRef) ?? resolveSecret(token) ?? undefined;
-  if (resolved) creds["authToken"] = resolved;
-
-  return creds;
-}

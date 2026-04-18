@@ -54,13 +54,13 @@ Never uses macOS Keychain.
 | Command | Status |
 |---|---|
 | `setup <provider>` | M1 ✓ |
-| `search <query>` | M1 ✓ (Resy) |
+| `search <query>` | M1 ✓ |
 | `doctor` | M1 ✓ |
 | `version` | M1 ✓ |
-| `availability` | Resy: M2 |
-| `book` | Resy: M2 |
-| `list` | M2 |
-| `cancel` | M2 |
+| `availability` | M2 ✓ (Resy) |
+| `book` | M2 ✓ (Resy) |
+| `list` | M2 ✓ (Resy) |
+| `cancel` | M2 ✓ (Resy) |
 | `snipe` | M3 |
 | `jobs` | M3 |
 
@@ -68,7 +68,7 @@ Never uses macOS Keychain.
 
 | Provider | search | availability | book | cancel | list | snipe | bookUrl |
 |---|---|---|---|---|---|---|---|
-| Resy | ✓ | M2 | M2 | M2 | M2 | M3 | — |
+| Resy | ✓ | ✓ | ✓ | ✓ | ✓ | M3 | — |
 | OpenTable | ✓ | — | — | — | — | — | ✓ |
 
 OpenTable has no public consumer API and Akamai Bot Manager blocks raw HTTP. Live venue search works via a browser-automation module: [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-nodejs) (stealth-patched Playwright fork) + persistent Chrome profile + channel:chrome + ~4.5s mouse jitter defeats Akamai reliably. The module drives `opentable.com`'s own homepage search and sniffs the `Autocomplete` GraphQL response. To use it: `npx playwright install chromium` + `pnpm add patchright` once, then `restaurant search "carbone" --provider opentable`.
