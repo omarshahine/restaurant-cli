@@ -85,20 +85,56 @@ export class ResyClient {
   }
 
   /**
-   * Two-step book: fetch booking details via config-id, then confirm.
+   * Step 1 of the two-step book flow: hand over the config_id from an
+   * availability slot and get back a short-lived `book_token`.
    * see resy-cli: internal/resy/book.go
    *
-   * M2 entry point; stubbed for now.
+   * LIVE API note (2026-04-18): Resy migrated this endpoint to JSON. Two
+   * consequences vs the older form-encoded shape:
+   *   - `Content-Type` must be `application/json` (415 otherwise)
+   *   - params go in the JSON body; sending them as query-string args gets
+   *     "invalid configuration ID" even with a valid token
    */
-  async book(params: { configId: string; day: string; partySize: number }): Promise<unknown> {
-    const qs = new URLSearchParams({
-      config_id: params.configId,
-      day: params.day,
-      party_size: String(params.partySize),
+  async getBookingDetails(params: {
+    configId: string;
+    day: string;
+    partySize: number;
+  }): Promise<unknown> {
+    return this.request("POST", `/3/details`, {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config_id: params.configId,
+        day: params.day,
+        party_size: params.partySize,
+      }),
     });
-    return this.request("POST", `/3/details?${qs.toString()}`, {
+  }
+
+  /**
+   * Step 2 of the two-step book flow: exchange the `book_token` + payment
+   * method for a real reservation. This is the destructive call — it books
+   * against the user's Resy account.
+   * see resy-cli: internal/resy/book.go
+   *
+   * LIVE API note (2026-04-18): Unlike `/3/details` (which migrated to JSON),
+   * `/3/book` is STILL form-encoded. Empirically verified by firing both
+   * shapes — JSON returns "invalid book token", form-encoded succeeds.
+   * `struct_payment_method` is sent as a form field whose value is a
+   * JSON-stringified `{id}` object. Resy's own web client behaves this way.
+   */
+  async confirmBooking(params: {
+    bookToken: string;
+    paymentMethodId: number | string;
+    sourceId?: string;
+  }): Promise<unknown> {
+    const body = new URLSearchParams({
+      book_token: params.bookToken,
+      struct_payment_method: JSON.stringify({ id: params.paymentMethodId }),
+      source_id: params.sourceId ?? "resy.com-venue-details",
+    }).toString();
+    return this.request("POST", `/3/book`, {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "",
+      body,
     });
   }
 
