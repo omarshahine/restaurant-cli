@@ -117,13 +117,21 @@ function mirrorToOpenClaw(providerId: string, creds: Credentials): void {
       );
       return;
     case "ok":
-      if (result.updated.length === 0) {
+      if (result.updated.length === 0 && result.removed.length === 0) {
         log(`\n✓ OpenClaw plugin config already up-to-date (${result.configPath}).`);
         return;
       }
-      log(`\n✓ Mirrored ${result.updated.length} value(s) into ${result.configPath}:`);
-      for (const k of result.updated) log(`  - plugins.entries.${OPENCLAW_PLUGIN_ID}.config.${k}`);
-      log(`\nRestart the OpenClaw gateway to pick up the new credentials.`);
+      if (result.updated.length > 0) {
+        log(`\n✓ Mirrored ${result.updated.length} value(s) into ${result.configPath}:`);
+        for (const k of result.updated)
+          log(`  - plugins.entries.${OPENCLAW_PLUGIN_ID}.config.${k}`);
+      }
+      if (result.removed.length > 0) {
+        log(`\n✓ Pruned ${result.removed.length} stale key(s) from ${result.configPath}:`);
+        for (const k of result.removed)
+          log(`  - plugins.entries.${OPENCLAW_PLUGIN_ID}.config.${k}`);
+      }
+      log(`\nRestart the OpenClaw gateway to pick up the change.`);
       return;
   }
 }
