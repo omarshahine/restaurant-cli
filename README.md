@@ -115,6 +115,33 @@ src/providers/
 
 Adding a new provider is a two-file change: create `src/providers/<name>/` implementing `Provider`, add one line to `bootstrap.ts`. No core-code changes.
 
+## OpenClaw plugin
+
+Pre-npm-publish install from the repo:
+
+```bash
+git clone https://github.com/omarshahine/restaurant-cli.git
+cd restaurant-cli
+./scripts/install-openclaw.sh     # deps + build + link bin + openclaw plugin register
+restaurant setup resy-openclaw    # auth + mirror creds into OpenClaw config
+# Restart the OpenClaw gateway
+```
+
+The `-openclaw` suffix on `setup` is the bridge: `restaurant setup resy` persists
+credentials to `~/.secrets.env` + `~/.config/restaurant-cli/config.yaml` (CLI
+store); appending `-openclaw` additionally mirrors them into
+`plugins.entries.restaurant-cli.config` in `~/.openclaw/openclaw.json` so the
+gateway-side tools can find them. Works for any provider — `opentable-openclaw`,
+`tock-openclaw`, etc.
+
+Once the CLI is published to npm this collapses to:
+
+```bash
+npm i -g restaurant-cli
+openclaw plugins install restaurant-cli
+restaurant setup resy-openclaw
+```
+
 ## Claude Code plugin
 
 Installs from Omar's private marketplace:
