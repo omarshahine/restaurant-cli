@@ -29,10 +29,10 @@ describe("providers/opentable/availability — legacy /dapi/ parser", () => {
     expect(slots[0]!.time).toBe("19:00");
     expect(slots[0]!.configId).toBe("abc");
     expect(slots[0]!.type).toBe("Dining Room");
-    expect(slots[0]!.token).toContain("opentable.com/booking/experiences-availability");
+    expect(slots[0]!.token).toContain("opentable.com/restref/client");
     expect(slots[0]!.token).toContain("rid=12345");
     expect(slots[0]!.token).toContain("datetime=2026-05-01T19%3A00");
-    expect(slots[0]!.token).toContain("covers=2");
+    expect(slots[0]!.token).toContain("partysize=2");
   });
 });
 
@@ -90,7 +90,7 @@ describe("providers/opentable/availability — __NEXT_DATA__ parser", () => {
     });
     expect(slots).toHaveLength(1);
     expect(slots[0]!.configId).toBe("tok-xyz");
-    expect(slots[0]!.token).toContain("covers=4");
+    expect(slots[0]!.token).toContain("partysize=4");
   });
 
   it("uses BFS last-resort discovery when OpenTable moves the array", () => {

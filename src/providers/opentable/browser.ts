@@ -247,8 +247,14 @@ export async function searchViaBrowser(
 
 /**
  * Availability lookup via the booking page. We navigate to
- * `opentable.com/booking/experiences-availability?rid=<id>&datetime=<ts>&covers=<n>`
+ * `opentable.com/restref/client?...` which OpenTable 302s to
+ * `/booking/restref/availability?rid=<id>&correlationId=<uuid>&restRef=<id>&partySize=<n>&dateTime=<ts>`
  * and extract slot data from page context.
+ *
+ * URL shape was updated on 2026-04-18 after the prior
+ * `/booking/experiences-availability` endpoint started returning 400 (see
+ * issue #16). The redirect-based path is the shape OpenTable's own
+ * affiliate links still use today.
  *
  * Returns the raw page-side JSON; parsing happens in availability.ts so the
  * transport stays swappable.
@@ -260,10 +266,11 @@ export async function availabilityViaBrowser(
   const handles = await launch(launchOpts);
   try {
     const url =
-      `https://www.opentable.com/booking/experiences-availability` +
+      `https://www.opentable.com/restref/client` +
       `?rid=${encodeURIComponent(params.restaurantId)}` +
-      `&datetime=${params.date}T19:00` +
-      `&covers=${params.partySize}`;
+      `&restref=${encodeURIComponent(params.restaurantId)}` +
+      `&partysize=${params.partySize}` +
+      `&datetime=${params.date}T19:00`;
     await handles.page.goto(url, { waitUntil: "domcontentloaded" });
 
     const data = await handles.page.evaluate(

@@ -3,7 +3,11 @@ import { buildBookingUrl, buildProfileUrl } from "../../../src/providers/opentab
 import { openTableProvider } from "../../../src/providers/opentable/provider.js";
 
 describe("providers/opentable/deeplink", () => {
-  it("builds a booking URL with rid, datetime, covers", () => {
+  it("builds a /restref/client booking URL (the live shape as of 2026-04-18)", () => {
+    // The `/restref/client` legacy affiliate URL still 302s into OpenTable's
+    // live booking flow; the older `/booking/experiences-availability` shape
+    // has been retired and now 400s (issue #16). Keep this test pinned to
+    // the working path so we notice if OpenTable drops it too.
     const url = buildBookingUrl({
       restaurantId: 12345,
       date: "2026-05-01",
@@ -11,7 +15,7 @@ describe("providers/opentable/deeplink", () => {
       partySize: 2,
     });
     expect(url).toBe(
-      "https://www.opentable.com/booking/experiences-availability?rid=12345&datetime=2026-05-01T19%3A30&covers=2",
+      "https://www.opentable.com/restref/client?rid=12345&restref=12345&partysize=2&datetime=2026-05-01T19%3A30",
     );
   });
 
@@ -40,6 +44,6 @@ describe("providers/opentable/deeplink", () => {
       {},
     );
     expect(url).toContain("rid=999");
-    expect(url).toContain("covers=4");
+    expect(url).toContain("partysize=4");
   });
 });
