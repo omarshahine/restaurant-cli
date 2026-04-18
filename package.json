@@ -74,7 +74,7 @@
   },
   "openclaw": {
     "extensions": [
-      "./dist/src/integrations/openclaw/index.js"
+      "./dist/src/integrations/openclaw/adapter.js"
     ],
     "compat": {
       "pluginApi": ">=2026.3.23"
