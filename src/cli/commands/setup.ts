@@ -10,6 +10,23 @@ import {
   secretsFilePath,
 } from "../../core/secrets.js";
 import type { Credentials } from "../../providers/types.js";
+import {
+  mirrorCredentialsToOpenClaw,
+  OPENCLAW_PLUGIN_ID,
+} from "../../integrations/openclaw/install.js";
+
+const KNOWN_TARGETS = ["openclaw"] as const;
+type SetupTarget = (typeof KNOWN_TARGETS)[number];
+
+function parseProviderArg(arg: string): { providerId: string; target: SetupTarget | null } {
+  for (const t of KNOWN_TARGETS) {
+    const suffix = `-${t}`;
+    if (arg.endsWith(suffix)) {
+      return { providerId: arg.slice(0, -suffix.length), target: t };
+    }
+  }
+  return { providerId: arg, target: null };
+}
 
 export const setupCommand = defineCommand({
   meta: {
@@ -19,13 +36,15 @@ export const setupCommand = defineCommand({
   args: {
     provider: {
       type: "positional",
-      description: "Provider id (e.g. resy)",
+      description:
+        "Provider id (e.g. resy). Append `-openclaw` (e.g. resy-openclaw) to also mirror credentials into the OpenClaw plugin config.",
       required: true,
     },
   },
   async run({ args }) {
+    const { providerId, target } = parseProviderArg(args.provider);
     const registry = buildRegistry();
-    const provider = registry.get(args.provider);
+    const provider = registry.get(providerId);
     const rl = createInterface({ input, output });
     let rlClosed = false;
     try {
@@ -68,11 +87,46 @@ export const setupCommand = defineCommand({
       }
 
       await persist(provider.id, finalCreds);
+
+      if (target === "openclaw") {
+        mirrorToOpenClaw(provider.id, finalCreds);
+      }
     } finally {
       if (!rlClosed) rl.close();
     }
   },
 });
+
+function mirrorToOpenClaw(providerId: string, creds: Credentials): void {
+  const result = mirrorCredentialsToOpenClaw(providerId, creds);
+  // eslint-disable-next-line no-console
+  const log = console.log;
+  // eslint-disable-next-line no-console
+  const warn = console.warn;
+  switch (result.status) {
+    case "not-installed":
+      warn(
+        `\n⚠  OpenClaw config not found at ${result.configPath} — skipping plugin mirror. ` +
+          `Install OpenClaw first, then re-run 'restaurant setup ${providerId}-openclaw'.`,
+      );
+      return;
+    case "plugin-not-registered":
+      warn(
+        `\n⚠  OpenClaw plugin '${OPENCLAW_PLUGIN_ID}' not in plugins.allow. ` +
+          `Run 'openclaw plugins install --link <repo-path>' first, then re-run this command.`,
+      );
+      return;
+    case "ok":
+      if (result.updated.length === 0) {
+        log(`\n✓ OpenClaw plugin config already up-to-date (${result.configPath}).`);
+        return;
+      }
+      log(`\n✓ Mirrored ${result.updated.length} value(s) into ${result.configPath}:`);
+      for (const k of result.updated) log(`  - plugins.entries.${OPENCLAW_PLUGIN_ID}.config.${k}`);
+      log(`\nRestart the OpenClaw gateway to pick up the new credentials.`);
+      return;
+  }
+}
 
 /**
  * Persist final creds:
