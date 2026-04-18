@@ -11,6 +11,11 @@
  * after `restaurant setup resy`, the gateway-side tools would still not
  * find credentials. This module is the bridge.
  *
+ * Only keys declared in the plugin's `configSchema.properties` are written
+ * — the login flow surfaces auxiliary fields (email, firstName) that have
+ * no business in OpenClaw config. Stale `<providerId>_*` keys from older
+ * setup runs are pruned to keep the config in sync with the current schema.
+ *
  * Values are written inline as plain strings. The OpenClaw config file
  * is 0600 by convention; swap to SecretRef manually if you need a
  * different store. The plugin's `credsFor()` already accepts both shapes.
@@ -22,12 +27,13 @@
 
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const OPENCLAW_PLUGIN_ID = "restaurant-cli";
 
 export type MirrorStatus =
-  | { status: "ok"; updated: string[]; configPath: string }
+  | { status: "ok"; updated: string[]; removed: string[]; configPath: string }
   | { status: "not-installed"; configPath: string }
   | { status: "plugin-not-registered"; configPath: string };
 
@@ -42,15 +48,27 @@ export function openClawConfigPath(): string {
   return join(homedir(), ".openclaw", "openclaw.json");
 }
 
+export interface MirrorOptions {
+  /**
+   * Explicit set of allowed config keys (full `<providerId>_<field>` form).
+   * When omitted, keys are loaded from the plugin manifest's `configSchema`.
+   * Tests pass this directly; production callers should leave it undefined.
+   */
+  allowedKeys?: Set<string>;
+}
+
 export function mirrorCredentialsToOpenClaw(
   providerId: string,
   creds: Record<string, unknown>,
+  options: MirrorOptions = {},
 ): MirrorStatus {
   const configPath = openClawConfigPath();
 
   if (!existsSync(configPath)) {
     return { status: "not-installed", configPath };
   }
+
+  const allowedKeys = options.allowedKeys ?? loadSchemaKeys();
 
   const original = readFileSync(configPath, "utf8");
   let config: OpenClawConfig;
@@ -72,22 +90,72 @@ export function mirrorCredentialsToOpenClaw(
   entry.config ??= {};
 
   const updated: string[] = [];
+  const removed: string[] = [];
   const prefix = `${providerId}_`;
+
   for (const [k, v] of Object.entries(creds)) {
     if (k === "password") continue;
     if (typeof v !== "string" || !v) continue;
     const key = `${prefix}${k}`;
+    if (allowedKeys && !allowedKeys.has(key)) continue;
     if (entry.config[key] !== v) {
       entry.config[key] = v;
       updated.push(key);
     }
   }
 
-  if (updated.length > 0) {
+  // Prune stale <providerId>_* keys that aren't in the current schema. These
+  // are leftovers from an older setup run that wrote non-schema values.
+  // Only touch keys for THIS provider so an unrelated setup run doesn't
+  // clobber another provider's config.
+  if (allowedKeys) {
+    for (const key of Object.keys(entry.config)) {
+      if (!key.startsWith(prefix)) continue;
+      if (allowedKeys.has(key)) continue;
+      delete entry.config[key];
+      removed.push(key);
+    }
+  }
+
+  if (updated.length > 0 || removed.length > 0) {
     const backup = `${configPath}.bak.restaurant-${Date.now()}`;
     copyFileSync(configPath, backup);
     writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
   }
 
-  return { status: "ok", updated, configPath };
+  return { status: "ok", updated, removed, configPath };
+}
+
+/**
+ * Walk up from this module's location until we find the plugin manifest,
+ * then return the set of declared config-schema property names. Resolves
+ * in both the dev (tsx `src/…`) and built (`dist/bin/restaurant.js`) cases.
+ * Returns undefined if no manifest is found — caller treats that as "no
+ * filter" so the setup flow still succeeds in unusual layouts.
+ */
+function loadSchemaKeys(): Set<string> | undefined {
+  const start = dirname(fileURLToPath(import.meta.url));
+  let dir = start;
+  for (let i = 0; i < 10; i++) {
+    const candidate = join(dir, "openclaw.plugin.json");
+    if (existsSync(candidate)) {
+      try {
+        const raw = readFileSync(candidate, "utf8");
+        const manifest = JSON.parse(raw) as {
+          configSchema?: { properties?: Record<string, unknown> };
+        };
+        const props = manifest.configSchema?.properties;
+        if (props && typeof props === "object") {
+          return new Set(Object.keys(props));
+        }
+      } catch {
+        return undefined;
+      }
+      return undefined;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return undefined;
 }
