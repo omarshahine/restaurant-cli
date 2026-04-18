@@ -17,9 +17,8 @@ import { buildRegistry } from "../../providers/bootstrap.js";
 import { createAtScheduler } from "../../scheduler/at.js";
 import { parseReleaseAt } from "../../core/time.js";
 import { resolveSecret } from "../../core/secrets.js";
+import { resolveCliBinary, shellQuote } from "../../core/shell.js";
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
-import { execSync } from "node:child_process";
 import type { Credentials, Provider } from "../../providers/types.js";
 
 // OpenClaw SDK types are loaded lazily so the plugin shell is still
@@ -79,26 +78,6 @@ function credsFor(
     }
   }
   return creds;
-}
-
-function resolveCliBinary(): string {
-  try {
-    const out = execSync("which restaurant", { stdio: ["ignore", "pipe", "ignore"] })
-      .toString()
-      .trim();
-    if (out) return out;
-  } catch {
-    // fall through
-  }
-  try {
-    return realpathSync(process.argv[1] ?? "restaurant");
-  } catch {
-    return "restaurant";
-  }
-}
-
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
 // --- Schemas --------------------------------------------------------------

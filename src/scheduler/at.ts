@@ -32,15 +32,24 @@ const execFileAsync = promisify(execFile);
  *     command sources `~/.secrets.env` itself so `RESY_AUTH_TOKEN` is
  *     present at fire time even if the at-daemon was started before the
  *     user's shell first set the var.
- */
-/**
- * Optional hooks to swap out the side-effectful POSIX `at` invocation. Tests
- * inject stubs; production uses the defaults which actually pipe to `at`.
+ *
+ * Optional DI hooks: `AtSchedulerDeps` lets tests swap out the side-effectful
+ * `at`/`atrm` invocations. Production leaves them at defaults.
  */
 export interface AtSchedulerDeps {
   enqueue?: (job: ScheduledJob) => Promise<string>;
   cancelAt?: (atJobId: string) => Promise<void>;
 }
+
+/**
+ * Characters safe for interpolation into the bash wrapper script without
+ * additional quoting. Keep this restrictive — a `$`, quote, or backtick in
+ * a job id would break out of the `echo "..."` JSONL lines in
+ * `buildWrapperScript`. The current snipe command produces IDs like
+ * `snipe-2026-12-01T18-00-00-000Z-abcd1234` which match this regex; extending
+ * the set requires rethinking the wrapper-script escaping.
+ */
+const JOB_ID_SAFE = /^[A-Za-z0-9_.\-:+]+$/;
 
 export class AtScheduler implements Scheduler {
   readonly id = "at" as const;
@@ -53,6 +62,16 @@ export class AtScheduler implements Scheduler {
   }
 
   async schedule(job: ScheduledJob): Promise<void> {
+    if (!JOB_ID_SAFE.test(job.id)) {
+      // Defense in depth: job.id is interpolated into the bash wrapper script
+      // without quoting (it lives inside JSONL echo lines + the jobs.json row
+      // id). A shell-unsafe id would open a command-injection hole even if no
+      // current caller produces one. Callers should prefer IDs matching the
+      // regex above — see snipe.ts for the canonical format.
+      throw new Error(
+        `Unsafe job id "${job.id}" — allowed chars: A-Z a-z 0-9 _ . - : +`,
+      );
+    }
     const jobs = loadJobs();
     if (jobs.some((j) => j.id === job.id)) {
       throw new Error(`Job ${job.id} already scheduled`);
