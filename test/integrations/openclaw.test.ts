@@ -79,7 +79,7 @@ describe("integrations/openclaw", () => {
     });
     const text = result.content[0]!.text;
     expect(text).toMatch(/does not support API booking/);
-    expect(text).toMatch(/opentable\.com\/booking/);
+    expect(text).toMatch(/opentable\.com\/restref\/client/);
   });
 
   it("availability on a capability-false provider errors cleanly", async () => {

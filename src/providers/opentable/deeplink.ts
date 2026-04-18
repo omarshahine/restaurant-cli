@@ -9,9 +9,17 @@
  *
  * Pattern borrowed (not code) from mikehe123/opentable-reservations — the
  * "stop at the deep link, hand control back to the user" invariant.
+ *
+ * LIVE NOTE (verified 2026-04-18 via patchright probe of rid=1046758,
+ * issue #16): the older `/booking/experiences-availability?rid=...&datetime=...`
+ * shape has been retired and now returns HTTP 400. The legacy affiliate
+ * URL `/restref/client?rid=X&restref=X&partysize=N&datetime=ISO` still
+ * works: OpenTable 302s it to `/booking/restref/availability?...` with a
+ * fresh `correlationId` and renders the time-slot picker ("OpenTable -
+ * Complete your reservation"). We keep that shape here.
  */
 
-const BOOKING_BASE = "https://www.opentable.com/booking/experiences-availability";
+const BOOKING_BASE = "https://www.opentable.com/restref/client";
 
 export function buildBookingUrl(params: {
   restaurantId: string | number;
@@ -19,10 +27,14 @@ export function buildBookingUrl(params: {
   time: string; // HH:mm (24h)
   partySize: number;
 }): string {
+  // The lowercase param names (`rid`, `restref`, `partysize`, `datetime`)
+  // are what `/restref/client` accepts; OpenTable internally redirects to
+  // the camelCase `restRef` / `partySize` / `dateTime` on the target page.
   const qs = new URLSearchParams({
     rid: String(params.restaurantId),
+    restref: String(params.restaurantId),
+    partysize: String(params.partySize),
     datetime: `${params.date}T${params.time}`,
-    covers: String(params.partySize),
   });
   return `${BOOKING_BASE}?${qs.toString()}`;
 }
