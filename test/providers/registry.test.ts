@@ -20,7 +20,9 @@ describe("providers/registry", () => {
     const r = buildRegistry();
     const resy = r.get("resy");
     expect(resy.capabilities.search).toBe(true);
-    expect(resy.capabilities.book).toBe(false); // M2
+    expect(resy.capabilities.availability).toBe(true);
+    expect(resy.capabilities.book).toBe(true);
+    expect(resy.capabilities.snipe).toBe(true);
 
     const ot = r.get("opentable");
     // OpenTable: browser-driven search is live (via patchright). Availability

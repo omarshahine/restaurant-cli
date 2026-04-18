@@ -64,3 +64,27 @@
 - `capabilities.search` flipped to `true` for OpenTable. `availability/book/cancel/list/snipe` still `false` — different interaction flows needed.
 - Tests: 25 passing (+3 for `parseAutocompleteResponse`). Typecheck + build clean.
 - Open: (a) location targeting polish, (b) availability via `/r/<slug>` DOM scrape, (c) M2 Resy book/cancel/list/snipe.
+
+### Session 6 — M2 Resy: availability + book + cancel + list
+
+- Closed issues #5, #6, #7, #8. All four commands live and capability-flipped on Resy.
+- **Availability (#5)**: `/4/find` parser extracted into `parseAvailabilityResponse` for testability. Slot.token carries Resy's `rgs://resy/<venueId>/...` config token that flows straight into book. Live-verified against Le Bernardin (id 1387) on 2026-05-15 — returned two real slots (22:45, 23:00 Dining Room).
+- **Book (#6)**: two-step flow (`POST /3/details` → `POST /3/book`). Pulls `book_token` + picks default payment method from the details response. If no `slotToken` is passed, command falls back to `getAvailability` and matches by `time`. CLI `book` command requires y/N confirmation; `--yes` skips. 6 mocked tests covering success, time-match fallback, no-match, expired-slot, no-payment-method, and Resy error body.
+- **Cancel (#7)**: `POST /3/cancel` with `resy_token` body. Accepts both `{cancelled: true}` and `{cancel_token}` response shapes as success. CLI gate + `--yes` mirror book.
+- **List (#8)**: split out of `cancel.ts` into `list.ts`. **Shape discovery**: the real Resy `/3/user/reservations` response diverged significantly from what the legacy resy-cli snapshots suggested. `venue` carries only `{id, currency}` (no name), `time_slot` is a bare `"HH:MM:SS"` string, and status is `{finished, no_show}` not `{reservation}`. Wrote `extractVenueNameFromShare` to regex the venue name out of `share.generic_message` ("Please RSVP for X on…") and `share.message[*].title` ("RSVP for our Reservation at X"). Live-verified: 20 real historical reservations display cleanly with venue names (Nishino, Cena Ristorante, Snake River Grill, Le Bernardin, etc.). Legacy shape still tolerated for forward compatibility.
+- Refactors: hoisted duplicated `credentialsFor` helper to `src/cli/credentials.ts`; extracted `confirmTTY` prompt to `src/cli/prompts.ts` so book + cancel share one y/N implementation.
+- Tests: 48 passing (was 25; +23 for M2 features). Typecheck + build clean.
+- Live-tested end-to-end: doctor ok, availability returns real slots, list returns real 20-row history. Book/cancel verified against nock only — destructive calls left to the user to run manually with `--yes`.
+- Open: (a) issues #9/#10 (M3 snipe + jobs), (b) publishing wave (#1 npm, #2 ClawHub, #14 private marketplace), (c) OpenTable polish (#3 availability, #4 geo).
+
+## 2026-04-18
+
+### Session 7 — First live Resy booking + API drift discovery
+
+- **First real booking completed end-to-end**: The Butcher's Table (Seattle, venue 562), 2026-04-25 19:00, Upstairs Lounge, party of 2. `reservation_id: 864504765`. Confirmed visible in `restaurant list --upcoming`.
+- **Resy API has drifted since resy-cli's upstream**. The book flow's two endpoints now disagree about Content-Type:
+  - `POST /3/details` migrated to JSON. Form-encoded → 415 "Did not attempt to load JSON data". Query-string params → 400 "invalid configuration ID" even with a valid token. Only `Content-Type: application/json` + params in the JSON body works.
+  - `POST /3/book` is STILL form-encoded. JSON body → 400 "invalid book token" even when the token is valid and fresh. `application/x-www-form-urlencoded` with `struct_payment_method` as a stringified JSON object succeeds.
+- The mismatch is what consumed this session. Empirically verified by firing both shapes against the live API; each endpoint's client method now carries a comment documenting what works and what doesn't, so the next drift can be debugged from the code alone.
+- Tests: all 48 still pass (nock body regexes switched back to form-encoded matcher on `/3/book`, JSON-object matcher on `/3/details`).
+- Open: (a) whether `/3/cancel` has drifted too (haven't exercised live; form-encoded matches the older shape so likely fine), (b) same commit-push-close-issues gate as before.

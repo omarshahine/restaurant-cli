@@ -3,7 +3,8 @@ import { loginResy, resySetupPrompts, validateResy } from "./auth.js";
 import { searchVenues } from "./search.js";
 import { getAvailability } from "./availability.js";
 import { book } from "./book.js";
-import { cancel, listReservations } from "./cancel.js";
+import { cancel } from "./cancel.js";
+import { listReservations } from "./list.js";
 
 /**
  * The Resy provider — first concrete implementation of the `Provider`
@@ -15,10 +16,10 @@ export const resyProvider: Provider = {
   displayName: "Resy",
   capabilities: {
     search: true,
-    availability: false, // M2
-    book: false, // M2
-    cancel: false, // M2
-    list: false, // M2
+    availability: true,
+    book: true,
+    cancel: true,
+    list: true,
     snipe: true, // supported by Resy's release-time model
   },
   auth: {
