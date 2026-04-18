@@ -7,47 +7,52 @@ description: |
   - User mentions a restaurant name and a date/time
   - User says "snipe that reservation" or mentions a release-time booking
   - User wants to list or cancel upcoming dining reservations
+  - User mentions a "reservation window" or "when slots open"
 ---
 
 # restaurant
 
-The `restaurant` CLI is installed as `restaurant-cli` on npm. It wraps multiple reservation platforms behind a single command surface.
+The `restaurant` CLI wraps multiple reservation platforms behind a single command surface. The CLI is installed via `npm i -g restaurant-cli`.
 
 ## Quick reference
 
 ```bash
-restaurant setup resy               # one-time credential setup per provider
-restaurant search "le bernardin"    # venue search (defaults to configured provider)
-restaurant search "le bernardin" --provider opentable   # cross-provider
-restaurant doctor                   # verify config + auth + scheduler health
-# M2+:
-restaurant availability --venue <id> --date 2026-05-01 --party 2
-restaurant book --venue <id> --date 2026-05-01 --time 19:30 --party 2
-restaurant snipe --venue <id> --date 2026-05-01 --time 19:30 --party 2 \
-                 --release-at 2026-04-30T10:00-04:00
-restaurant list
+restaurant setup resy                                    # one-time credential setup per provider
+restaurant doctor                                        # verify config + auth + scheduler health
+restaurant search "le bernardin"                         # venue search (default provider)
+restaurant search "le bernardin" --provider opentable    # cross-provider
+
+restaurant availability --venue 1387 --date 2026-05-01 --party 2
+restaurant book --venue 1387 --date 2026-05-01 --time 19:30 --party 2
+restaurant list [--upcoming]
 restaurant cancel <reservation-id>
+
+restaurant snipe --venue 1387 --date 2026-05-01 --time 19:30 --party 2 \
+                 --release-at 2026-04-30T10:00-07:00
+restaurant jobs list
+restaurant jobs cancel <job-id>
+restaurant jobs logs <job-id>
 ```
+
+All destructive commands (`book`, `cancel`, `snipe`, `jobs cancel`) prompt for y/N confirmation unless you pass `--yes`.
+
+## Provider capabilities as of 2026-04
+
+| Provider | search | availability | book | cancel | list | snipe | bookUrl |
+|---|---|---|---|---|---|---|---|
+| Resy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| OpenTable | ✓ | — | — | — | — | — | ✓ |
+
+OpenTable can't complete bookings through the API — the `bookUrl` capability hands back a deep link you open in your own browser to confirm. OpenTable search runs via browser automation (patchright + persistent Chrome profile) so the first invocation may prompt for Chrome to open.
+
+Always call `restaurant doctor` before trying a provider-specific action — capabilities are the source of truth, not this table.
 
 ## Configuration
 
 - Config: `~/.config/restaurant-cli/config.yaml`
-- Secrets: `~/.secrets.env` (never macOS Keychain).
-- Use `restaurant config path` to get the config location.
-- Use `restaurant doctor` to verify a provider is wired up before trying to book.
+- Secrets: `~/.secrets.env` (never macOS Keychain)
+- Run `restaurant config path` to get the config location
 
-## How the router agent selects a provider
+## Routing
 
-Each provider reports its `capabilities` (search, availability, book, snipe, etc.). Before running a command, check `restaurant doctor` output and prefer providers whose capabilities match the requested action. If unsure, use the configured default.
-
-## Adding a new provider
-
-Providers are peer modules under `src/providers/` in the restaurant-cli repo. Adding one only requires:
-1. A new `src/providers/<id>/` implementing the `Provider` interface.
-2. One line in `src/providers/bootstrap.ts`.
-
-The CLI, OpenClaw plugin, and this skill all discover the new provider automatically via the registry.
-
-## When to delegate to the router agent
-
-If the user asks to book, search, or manage a reservation, delegate to the `restaurant-router` agent — it reads the provider registry and picks the right provider-specific agent (e.g. `resy-agent`).
+Any booking request should go through the `restaurant-router` agent first — it reads `restaurant doctor` to pick the right provider agent (`resy-agent`, `opentable-agent`) based on user intent and available capabilities.
