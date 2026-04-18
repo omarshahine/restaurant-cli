@@ -8,6 +8,7 @@ export default defineConfig({
     "src/scheduler/index.ts",
     "src/core/index.ts",
     "src/integrations/openclaw/index.ts",
+    "src/integrations/openclaw/adapter.ts",
   ],
   format: ["esm"],
   outDir: "dist",

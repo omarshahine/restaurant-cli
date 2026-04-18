@@ -1,29 +1,26 @@
 /**
  * OpenClaw SDK adapter. This is the module OpenClaw actually loads —
- * a top-level-await wrapper that hands the plugin-entry factory to the SDK.
+ * a sync wrapper that hands the plugin-entry factory to the SDK.
  *
  * Kept separate from `index.ts` so the library can be imported without the
  * `openclaw` peerDep present (`openclaw` is optional). If the SDK isn't
  * installed at runtime, we log a clear warning and default-export `null`
  * rather than a cryptic "Cannot find module".
+ *
+ * Uses `createRequire` (sync) rather than dynamic `import()` with top-level
+ * await, because the OpenClaw plugin loader evaluates the module in a
+ * non-async wrapper and rejects TLA ("ReferenceError: await is not defined").
  */
 
+import { createRequire } from "node:module";
 import { createOpenClawEntry } from "./index.js";
 
 let pluginEntry: unknown = null;
 
-// The `openclaw` package is an optional peerDependency, so TypeScript can't
-// resolve its subpath at compile time. The dynamic specifier is stored in a
-// variable to stop bundlers from trying to follow it, and the result is
-// typed by hand below.
-const OPENCLAW_SDK_MODULE = "openclaw/plugin-sdk/plugin-entry";
+const require = createRequire(import.meta.url);
 
 try {
-  // Storing the specifier in a variable means TypeScript can't statically
-  // check the module path. That's exactly what we want for an optional
-  // peer dep — at compile time we're fine without it installed, and at
-  // runtime the catch below handles "Cannot find module".
-  const sdk = (await import(OPENCLAW_SDK_MODULE)) as {
+  const sdk = require("openclaw/plugin-sdk/plugin-entry") as {
     definePluginEntry?: (e: unknown) => unknown;
   };
   if (typeof sdk.definePluginEntry !== "function") {
