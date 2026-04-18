@@ -125,6 +125,31 @@ describe("core/secrets resolveSecret", () => {
         }),
       ).toBe("escaped-value");
     });
+
+    it("handles RFC 6901 `/` pointer as empty-string root key (not root doc)", () => {
+      // Per RFC 6901: "/" references the member with the empty-string key,
+      // not the root document. Previously `"/"` short-circuited to return
+      // the whole parsed secrets doc.
+      const dir = join(tmpHome, ".openclaw");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "secrets.json"), JSON.stringify({ "": "empty-key-value" }));
+      expect(
+        resolveSecret({ source: "file", provider: "secrets", id: "/" }),
+      ).toBe("empty-key-value");
+    });
+
+    it("empty pointer `` returns the root doc — but resolves to undefined since root isn't a string", () => {
+      const dir = join(tmpHome, ".openclaw");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "secrets.json"),
+        JSON.stringify({ plugins: { foo: "bar" } }),
+      );
+      // Empty pointer → whole doc (not a string) → typeof check filters to undefined.
+      expect(
+        resolveSecret({ source: "file", provider: "secrets", id: "" }),
+      ).toBeUndefined();
+    });
   });
 
   it("throws on source:exec (keychain unsupported)", () => {
