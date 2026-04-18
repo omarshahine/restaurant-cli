@@ -88,3 +88,38 @@
 - The mismatch is what consumed this session. Empirically verified by firing both shapes against the live API; each endpoint's client method now carries a comment documenting what works and what doesn't, so the next drift can be debugged from the code alone.
 - Tests: all 48 still pass (nock body regexes switched back to form-encoded matcher on `/3/book`, JSON-object matcher on `/3/details`).
 - Open: (a) whether `/3/cancel` has drifted too (haven't exercised live; form-encoded matches the older shape so likely fine), (b) same commit-push-close-issues gate as before.
+
+### Session 8 — M3 through M6 in one PR (autonomous overnight)
+
+Four milestones shipped on branch `m3-through-m6`, one PR back to main.
+
+- **M3 (#9, #10) — Resy snipe + jobs, live-verified**
+  - `scheduler/at.ts` now actually pipes to POSIX `at -t YYYYMMDDHHMM`. Chose `-t` over `at 10:00 04/30/2026` because `-t` takes a literal stamp and never does heuristic parsing. Wraps the command in a bash script that sources `~/.secrets.env` + `~/.secrets-macbook-pro.env` at fire time because `at` strips the parent shell's env.
+  - Captures the at-job number from `at`'s stderr and persists it alongside the metadata so `restaurant jobs cancel` can call `atrm` without asking `atq`. JSONL `snipe.start` / `snipe.end` events + book output go to `~/.local/state/restaurant-cli/logs/<jobId>.log` for `jobs logs`.
+  - Dependency injection on enqueue + cancelAt so tests don't touch the real at-queue.
+  - `jobs` command converted to citty subCommands (list / cancel / logs). Dropped the parent `run` handler because citty dispatches parent `run` as a pre-hook and would double-print every subcommand call.
+  - Live-verified end-to-end with a 2026-12-01 snipe: `atq` showed the job, `restaurant jobs list` surfaced it with the at-job id, `restaurant jobs cancel --yes` called `atrm` and cleared both queues.
+
+- **M4 (#11) — OpenClaw tool handlers**
+  - 6 tools wired: `restaurant_search`, `restaurant_availability`, `restaurant_book`, `restaurant_schedule_snipe`, `restaurant_list`, `restaurant_cancel`. All provider-agnostic via `provider` param + registry dispatch.
+  - `restaurant_book` on OpenTable gracefully degrades to `bookUrl` hand-off. The tool never pretends to book when the provider can't.
+  - Safety documented in tool descriptions: book/cancel are destructive — the OpenClaw client is expected to confirm with the user; the plugin itself does not prompt.
+  - `adapter.ts` is the loadable entry point: top-level `await import("openclaw/...")` with a graceful fallback that default-exports `null` + a warning if the peer dep is missing. Keeps library consumers working.
+  - credsFor uses a `{providerId}_{key}` prefix convention against pluginConfig (not tied to setupPrompts, because the durable Resy auth token lives outside of prompts). Tests verify the round-trip.
+
+- **M5 (#12, #14) — Claude Code plugin + private marketplace**
+  - Skill, three agents (`restaurant-router`, `resy-agent`, `opentable-agent`), five commands. All command frontmatter is description-only — `name:` breaks `/plugin-prefix:` autocomplete per the omarshahine-plugins CLAUDE.md.
+  - Router's protocol: `restaurant doctor` first, never assume capabilities, never pass `--yes` unless the user confirmed in chat. OpenTable + book → graceful hand-off via `opentable-agent`.
+  - Registered in `omarshahine-plugins/.claude-plugin/marketplace.json` as `{source: github, repo: omarshahine/restaurant-cli}` (same pattern as `apple-pim`). Marketplace metadata bumped 3.38.1 → 3.39.0. That change is committed + pushed to the private marketplace repo separately.
+
+- **M6 (#13) — OpenTable availability scraper (wired, NOT live-verified)**
+  - New `parseNextDataAvailabilityResponse` in `availability.ts` walks OpenTable's `__NEXT_DATA__` hydration blob. Tries 5 candidate anchor paths (`initialData.availabilityData.availability.times`, `restaurantAvailability.times`, etc.) then BFS fallback for schema drift. Drops `available: false` + `isSoldOut: true`. Emits Slot[] with bookingUrl tokens.
+  - `provider.getAvailability` wires straight to `availabilityViaBrowser` → parser. **Capability stays `false`** so the CLI gate blocks invocation until a live run confirms the parser matches OpenTable's current SSR payload. Flipping after verification is a one-character change in `provider.ts`.
+  - Tests cover the primary path, fallback path, BFS last-resort, graceful empty, and available-filter. 6 new tests, 61/61 passing.
+
+Tests: 50 → 61 (+11 for M3 scheduler + M4 OpenClaw tools + M6 NEXT_DATA parser). Typecheck + build clean.
+
+Live-verified this session: doctor, snipe queue+list+cancel (end-to-end).
+Not live-verified: anything destructive (no second Resy booking), OpenTable availability (needs the user in the loop for Akamai warmup).
+
+Open: (a) merge the PR on `m3-through-m6`, (b) flip OpenTable availability capability once you run it live, (c) publishing wave (npm #1, ClawHub #2).
