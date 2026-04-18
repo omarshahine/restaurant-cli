@@ -94,12 +94,12 @@ interface NextSlotRaw {
 export function findSlotsInNextData(nd: unknown): NextSlotRaw[] {
   if (!nd || typeof nd !== "object") return [];
 
-  // Candidate paths observed in real OpenTable SSR dumps, most → least specific:
-  //   props.pageProps.initialData.availabilityData.availability.times
-  //   props.pageProps.initialData.availability.times
-  //   props.pageProps.availability.times
-  //   props.pageProps.slots
-  //   props.pageProps.initialData.restaurantAvailability.times
+  // Candidate paths, most → least specific. These were picked from the
+  // shapes Next.js SSR pages typically embed, not from a live OpenTable
+  // response (the parser has not yet been verified end-to-end). If the
+  // primary paths miss, the BFS fallback below scans the tree for an array
+  // whose first element smells like a slot. Update this list when a real
+  // live response becomes available.
   const candidatePaths: string[][] = [
     ["props", "pageProps", "initialData", "availabilityData", "availability", "times"],
     ["props", "pageProps", "initialData", "availability", "times"],

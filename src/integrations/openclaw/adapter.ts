@@ -12,10 +12,18 @@ import { createOpenClawEntry } from "./index.js";
 
 let pluginEntry: unknown = null;
 
+// The `openclaw` package is an optional peerDependency, so TypeScript can't
+// resolve its subpath at compile time. The dynamic specifier is stored in a
+// variable to stop bundlers from trying to follow it, and the result is
+// typed by hand below.
+const OPENCLAW_SDK_MODULE = "openclaw/plugin-sdk/plugin-entry";
+
 try {
-  // Dynamic import so bundlers don't try to resolve the optional peer dep
-  // at build time.
-  const sdk = (await import("openclaw/plugin-sdk/plugin-entry" as string)) as {
+  // Storing the specifier in a variable means TypeScript can't statically
+  // check the module path. That's exactly what we want for an optional
+  // peer dep — at compile time we're fine without it installed, and at
+  // runtime the catch below handles "Cannot find module".
+  const sdk = (await import(OPENCLAW_SDK_MODULE)) as {
     definePluginEntry?: (e: unknown) => unknown;
   };
   if (typeof sdk.definePluginEntry !== "function") {

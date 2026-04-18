@@ -1,38 +1,12 @@
 import { defineCommand } from "citty";
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
-import { execSync } from "node:child_process";
 import { buildRegistry } from "../../providers/bootstrap.js";
 import { loadConfig } from "../../core/config.js";
 import { CapabilityError } from "../../core/errors.js";
 import { parseReleaseAt } from "../../core/time.js";
+import { resolveCliBinary, shellQuote } from "../../core/shell.js";
 import { createAtScheduler } from "../../scheduler/at.js";
 import { confirmTTY } from "../prompts.js";
-
-/**
- * Resolve the absolute path to the `restaurant` binary so the at-job can
- * invoke it under a restricted `at` environment.
- *
- * Preference order:
- *   1. `which restaurant` (works when the package is on $PATH — npm i -g or npm link)
- *   2. realpath of process.argv[1] (works when invoked as `node dist/bin/restaurant.js`)
- *   3. fall through to bare "restaurant" (at-daemon's PATH may or may not find it)
- */
-function resolveCliBinary(): string {
-  try {
-    const out = execSync("which restaurant", { stdio: ["ignore", "pipe", "ignore"] })
-      .toString()
-      .trim();
-    if (out) return out;
-  } catch {
-    // which failed — fall through
-  }
-  try {
-    return realpathSync(process.argv[1] ?? "restaurant");
-  } catch {
-    return "restaurant";
-  }
-}
 
 export const snipeCommand = defineCommand({
   meta: {
@@ -133,10 +107,3 @@ export const snipeCommand = defineCommand({
   },
 });
 
-/**
- * Minimal shell-quote: wrap in single quotes and escape inner single quotes
- * with the standard '\\''' dance. Safe for bash-style invocation.
- */
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
