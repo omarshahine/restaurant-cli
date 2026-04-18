@@ -110,19 +110,36 @@ const REAL_CHROME_UA =
  * Launch a browser with the stealth + profile combo live-verified to defeat
  * Akamai on opentable.com. The profile dir is reused across calls so trust
  * cookies accumulate — do not delete it casually.
+ *
+ * Headless does NOT work — tested 2026-04-18 (#4). Even with a warmed
+ * persistent profile (trust cookies present, no cold-start challenge),
+ * Akamai drops the HTTP/2 connection mid-request from headless Chrome with
+ * `ERR_HTTP2_PROTOCOL_ERROR`. Their detection examines render-loop timing,
+ * WebGL fingerprints, and window properties that differ between headless
+ * and real Chrome even in Chromium's "new" headless mode. Patchright helps
+ * with some signals but not these. Headed is required until we either
+ * (a) get a true in-OS window layer (macOS virtual display), or
+ * (b) move to a CDP connection against a real Chrome Omar already has open.
+ *
+ * Override via env vars:
+ *   RESTAURANT_CLI_HEADLESS=1     → attempt headless anyway (will likely fail)
+ *   RESTAURANT_CLI_OT_PROFILE_DIR → use a different profile dir
  */
 async function launch(
   opts: BrowserFetchOptions = {},
 ): Promise<{ browser: Browser | null; context: BrowserContext; page: Page }> {
   const pw = await loadPlaywright();
-  const headed = opts.headed ?? process.env["RESTAURANT_CLI_HEADED"] === "1";
   const useSystemChrome = process.env["RESTAURANT_CLI_BROWSER_CHANNEL"] !== "chromium";
   const profileDir =
     process.env["RESTAURANT_CLI_OT_PROFILE_DIR"] ??
     `${process.env["HOME"]}/.cache/restaurant-cli/chrome-profile-opentable`;
 
+  // Default headed. Only flip to headless if the user opts in explicitly.
+  const forceHeadless = process.env["RESTAURANT_CLI_HEADLESS"] === "1";
+  const headed = !forceHeadless && (opts.headed ?? true);
+
   const context = await pw.chromium.launchPersistentContext(profileDir, {
-    headless: !headed && false /* force headed until headless trust path is proven */,
+    headless: !headed,
     ...(useSystemChrome ? { channel: "chrome" } : {}),
     viewport: { width: 1400, height: 900 },
     locale: "en-US",
@@ -179,10 +196,21 @@ async function warmup(page: Page, ms: number = 4500): Promise<void> {
  *
  * Verified live (2026-04-17): 30-item restaurant list returned for typed
  * queries. Parser lives in search.ts::parseAutocompleteResponse.
+ *
+ * City disambiguation (2026-04-18): if `opts.city` is provided, we prepend
+ * it to the typed query as a single autocomplete input — OpenTable's
+ * autocomplete takes multi-token input and biases restaurant results
+ * toward the metro we named. This avoids a separate location-picker
+ * interaction (the homepage has a single dual-purpose input). Trade-off:
+ * a restaurant name containing the city name will be weirdly duplicated
+ * in the typed string, but autocomplete tolerates that fine. Live-probe
+ * confirmed the homepage DOM has exactly one input
+ * (`#home-page-autocomplete-input`); the "location-update-button" only
+ * triggers browser geolocation, not a city-by-name picker.
  */
 export async function searchViaBrowser(
   query: string,
-  _opts: { covers?: number; limit?: number } = {},
+  opts: { covers?: number; limit?: number; city?: string } = {},
   launchOpts: BrowserFetchOptions = {},
 ): Promise<unknown> {
   const handles = await launch(launchOpts);
@@ -228,7 +256,11 @@ export async function searchViaBrowser(
       })()`,
     );
     await handles.page.waitForTimeout(400);
-    await handles.page.keyboard.type(query, { delay: 70 });
+
+    // Prepend the city as an autocomplete token so OpenTable geo-biases
+    // toward that metro. If no --city, just type the query.
+    const typed = opts.city ? `${opts.city} ${query}` : query;
+    await handles.page.keyboard.type(typed, { delay: 70 });
 
     // Wait for debounced autocomplete (~300ms debounce + network RTT).
     await handles.page.waitForTimeout(3500);

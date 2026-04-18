@@ -98,7 +98,10 @@ export function parseSearchResponse(raw: unknown): Venue[] {
  * defeats Akamai, then parses the Autocomplete GraphQL response.
  */
 export async function searchVenues(q: VenueQuery, _creds: Credentials): Promise<Venue[]> {
-  const raw = await searchViaBrowser(q.query, { limit: q.limit });
+  const raw = await searchViaBrowser(q.query, {
+    ...(q.limit ? { limit: q.limit } : {}),
+    ...(q.city ? { city: q.city } : {}),
+  });
   return parseAutocompleteResponse(raw, q.limit);
 }
 
