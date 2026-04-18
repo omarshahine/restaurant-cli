@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- SecretRef resolver now supports `source: "file"` + `provider: "secrets"`, reading `~/.openclaw/secrets.json` and following `id` as an RFC 6901 JSON pointer. This is the idiomatic OpenClaw shared-secrets-store pattern (used by travel-hub, easypost, etc.) — lets one copy of a token live in the central secrets file rather than inline in each plugin's config. Previously the resolver understood `env` and filesystem-path `file` only; the shared-store shape silently returned `undefined`, causing 401s on booking calls. 7 new tests covering the shape, JSON-pointer escapes, missing-file / missing-pointer / non-string-value fallbacks.
 - OpenTable provider (`src/providers/opentable/`): search + availability via reverse-engineered `/dapi/` endpoints (no credentials needed). No public OpenTable API exists; this uses the same endpoints opentable.com's React app calls.
 - `bookUrl` capability on `ProviderCapabilities` — honest degradation for providers that can generate a deep link but not complete the booking themselves.
 - `Provider.getBookingUrl` optional method.
