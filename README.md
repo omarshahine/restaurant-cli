@@ -61,15 +61,17 @@ Never uses macOS Keychain.
 | `book` | M2 ✓ (Resy) |
 | `list` | M2 ✓ (Resy) |
 | `cancel` | M2 ✓ (Resy) |
-| `snipe` | M3 |
-| `jobs` | M3 |
+| `snipe` | M3 ✓ (Resy) |
+| `jobs` | M3 ✓ |
 
 ## Providers
 
 | Provider | search | availability | book | cancel | list | snipe | bookUrl |
 |---|---|---|---|---|---|---|---|
-| Resy | ✓ | ✓ | ✓ | ✓ | ✓ | M3 | — |
-| OpenTable | ✓ | — | — | — | — | — | ✓ |
+| Resy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| OpenTable | ✓ | wired* | — | — | — | — | ✓ |
+
+\* OpenTable availability is coded against the `/booking/experiences-availability` page's `__NEXT_DATA__` hydration payload but capability stays `false` until the parser is live-verified. Flip `capabilities.availability` in `src/providers/opentable/provider.ts` once you've confirmed a successful scrape.
 
 OpenTable has no public consumer API and Akamai Bot Manager blocks raw HTTP. Live venue search works via a browser-automation module: [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-nodejs) (stealth-patched Playwright fork) + persistent Chrome profile + channel:chrome + ~4.5s mouse jitter defeats Akamai reliably. The module drives `opentable.com`'s own homepage search and sniffs the `Autocomplete` GraphQL response. To use it: `npx playwright install chromium` + `pnpm add patchright` once, then `restaurant search "carbone" --provider opentable`.
 
