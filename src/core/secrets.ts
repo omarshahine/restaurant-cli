@@ -6,13 +6,41 @@ import { isSecretRef, type SecretRef } from "./types.js";
 
 const SECRETS_FILE = join(homedir(), ".secrets.env");
 
+function openclawSecretsPath(): string {
+  return join(homedir(), ".openclaw", "secrets.json");
+}
+
+/**
+ * Follow an RFC 6901 JSON Pointer into a parsed JSON document. Returns
+ * undefined for missing paths or non-object traversals.
+ */
+function jsonPointer(doc: unknown, pointer: string): unknown {
+  if (!pointer || pointer === "/") return doc;
+  const parts = pointer
+    .replace(/^\//, "")
+    .split("/")
+    .map((p) => p.replace(/~1/g, "/").replace(/~0/g, "~"));
+  let cur: unknown = doc;
+  for (const p of parts) {
+    if (cur == null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[p];
+  }
+  return cur;
+}
+
 /**
  * Resolves a SecretRef (or inline string, or env-var interpolation like
  * `${RESY_API_TOKEN}`) to the underlying secret value.
  *
  * Supported sources:
  *   - "env": looks up `process.env[ref.id]`
- *   - "file": reads the file at `ref.id`, trims whitespace
+ *   - "file" (no provider, or provider other than "secrets"): reads the file
+ *     at `ref.id` as a plaintext path, trims whitespace
+ *   - "file" with `provider: "secrets"`: reads `~/.openclaw/secrets.json`
+ *     and follows `ref.id` as an RFC 6901 JSON pointer. This matches the
+ *     idiomatic OpenClaw shared-secrets-store pattern used by travel-hub,
+ *     easypost, and other host plugins, letting the same token live in one
+ *     place across the gateway.
  *
  * `exec` (Keychain) is intentionally NOT supported — the user's global rule
  * forbids macOS Keychain. Secrets live in ~/.secrets.env.
@@ -32,6 +60,17 @@ export function resolveSecret(value: SecretRef | string | undefined): string | u
       case "env":
         return process.env[value.id];
       case "file":
+        if (value.provider === "secrets") {
+          const path = openclawSecretsPath();
+          if (!existsSync(path)) return undefined;
+          try {
+            const doc = JSON.parse(readFileSync(path, "utf8"));
+            const v = jsonPointer(doc, value.id);
+            return typeof v === "string" && v ? v : undefined;
+          } catch {
+            return undefined;
+          }
+        }
         try {
           return readFileSync(value.id, "utf8").trim();
         } catch {
