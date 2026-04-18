@@ -13,9 +13,13 @@ function openclawSecretsPath(): string {
 /**
  * Follow an RFC 6901 JSON Pointer into a parsed JSON document. Returns
  * undefined for missing paths or non-object traversals.
+ *
+ * Per RFC 6901: empty string `""` → root document, `"/"` → the member with
+ * the empty-string key (i.e. `doc[""]`), `"/a/b"` → `doc.a.b`. Everything
+ * else traverses normally with `~0`/`~1` un-escaping for `~`/`/` in keys.
  */
 function jsonPointer(doc: unknown, pointer: string): unknown {
-  if (!pointer || pointer === "/") return doc;
+  if (!pointer) return doc;
   const parts = pointer
     .replace(/^\//, "")
     .split("/")
