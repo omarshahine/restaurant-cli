@@ -88,6 +88,39 @@ describe("scheduler/at", () => {
     expect(await sched.list()).toHaveLength(0);
   });
 
+  it("rejects shell-unsafe job ids (defense in depth)", async () => {
+    const sched = createAtScheduler({ enqueue: enqueueStub, cancelAt: cancelAtStub });
+    // The wrapper script in buildWrapperScript interpolates job.id into a
+    // bash `echo "..."` line. A `"` or `$` in the id would break out; the
+    // guard must fire BEFORE enqueue so no at-job gets created with a
+    // dangerous id.
+    for (const bad of [
+      'job"with"quotes',
+      "job$HOME",
+      "job`cat /etc/passwd`",
+      "job\nnewline",
+      "job;rm -rf",
+    ]) {
+      await expect(
+        sched.schedule({
+          id: bad,
+          command: "noop",
+          runAt: new Date("2027-01-01T00:00:00Z"),
+          providerId: "resy",
+        }),
+      ).rejects.toThrow(/Unsafe job id/);
+    }
+    // Canonical format (what snipe.ts produces) must pass.
+    await expect(
+      sched.schedule({
+        id: "snipe-2027-01-01T00-00-00-000Z-abcd1234",
+        command: "noop",
+        runAt: new Date("2027-01-01T00:00:00Z"),
+        providerId: "resy",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("localTimestamp formats as YYYYMMDDHHMM in local time", () => {
     // Constructed from wall-clock parts so the test is tz-stable:
     // new Date(2026, 3, 30, 14, 5) == Apr 30 2026 14:05 in whichever tz
