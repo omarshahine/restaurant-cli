@@ -1,0 +1,65 @@
+name: Publish to NPM
+
+# Fires on `vX.Y.Z` tag push. Publishes restaurant-cli to the public npm
+# registry after running the `prepublishOnly` script (build + typecheck +
+# test). Requires the `NPM_TOKEN` repo secret with publish access to the
+# `restaurant-cli` package.
+#
+# Generate a token via https://www.npmjs.com/settings/~/tokens — prefer a
+# granular access token scoped to the `restaurant-cli` package with
+# "Read and write" permission. Paste it into the repo's Settings →
+# Secrets and variables → Actions as `NPM_TOKEN`, or use:
+#   gh secret set NPM_TOKEN -R omarshahine/restaurant-cli
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish restaurant-cli to NPM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Assert tag matches package.json version
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json ($PKG_VERSION)"
+            exit 1
+          fi
+
+      - name: Verify package contents
+        run: |
+          npm run build
+          npm run typecheck
+          npm run test
+          npm pack --dry-run
+
+      - name: Publish to NPM
+        # prepublishOnly fires here too (build + typecheck + test), so the
+        # above "Verify" step is technically redundant — we keep it
+        # explicit for clearer CI logs when something regresses.
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

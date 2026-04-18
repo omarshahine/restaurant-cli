@@ -88,7 +88,7 @@
     "test:watch": "vitest",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test"
+    "prepublishOnly": "npm run build && npm run typecheck && npm run test"
   },
   "dependencies": {
     "@inquirer/password": "^5.0.11",
