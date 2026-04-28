@@ -138,10 +138,10 @@ describe("providers/opentable/availability — __NEXT_DATA__ parser", () => {
 });
 
 describe("providers/opentable/availability — Provider gating", () => {
-  it("capabilities.availability is false until live-verified — CLI blocks invocation there", () => {
-    // The CLI's availability command gates on capability. The provider's
-    // getAvailability is still callable from tests + integrations, but the
-    // user-facing command throws CapabilityError before reaching it.
-    expect(openTableProvider.capabilities.availability).toBe(false);
+  it("capabilities.availability is true with API+browser fallback wired", () => {
+    // Mode is picked at call time via RESTAURANT_CLI_OT_MODE
+    // (api | browser | auto). Default `auto` tries the GQL persisted-query
+    // path first, falls back to the patchright scrape on Akamai 403.
+    expect(openTableProvider.capabilities.availability).toBe(true);
   });
 });
