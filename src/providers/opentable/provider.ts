@@ -13,8 +13,8 @@ import { searchVenues } from "./search.js";
 import { buildBookingUrl } from "./deeplink.js";
 import {
   getAvailability as getAvailabilityViaBrowser,
+  getAvailabilityViaApi,
 } from "./availability.js";
-import { getAvailabilityViaApi } from "./availability.js";
 
 /**
  * OpenTable provider.
@@ -76,7 +76,14 @@ async function getAvailabilityDispatch(
       // eslint-disable-next-line no-console
       console.error(`[opentable] api path failed, falling back to browser: ${(err as Error).message}`);
     }
-    if (err instanceof ProviderError) {
+    // Fall back on the two failure modes Akamai actually produces:
+    //   - ProviderError: a non-200 we converted (typically 403)
+    //   - AbortError: AbortController fired because Akamai stalled the TLS
+    //     handshake past our 20s timeout. Without this branch, the whole
+    //     point of `auto` mode evaporates under the most common Akamai
+    //     failure shape.
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    if (err instanceof ProviderError || isAbort) {
       return getAvailabilityViaBrowser(q, creds);
     }
     throw err;

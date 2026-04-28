@@ -273,8 +273,19 @@ export async function lookupRestaurantId(
   const fetchImpl = opts.fetchImpl ?? fetch;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   // Acquire CSRF + cookies first — restaurant pages are similarly Akamai-gated
-  // and benefit from the homepage warmup.
-  await ensureCsrf(timeoutMs, fetchImpl).catch(() => null);
+  // and benefit from the homepage warmup. The error is swallowed because the
+  // /r/<slug> page sometimes serves itself anonymously, but we log under
+  // DEBUG so a real homepage-side failure isn't hidden when the slug fetch
+  // also fails downstream.
+  await ensureCsrf(timeoutMs, fetchImpl).catch((csrfErr: unknown) => {
+    if (process.env["RESTAURANT_CLI_DEBUG"]) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[opentable] CSRF warmup failed (continuing without): ${(csrfErr as Error).message}`,
+      );
+    }
+    return null;
+  });
 
   const url = `${BASE_URL}/r/${encodeURIComponent(slug)}`;
   const ctrl = new AbortController();
