@@ -25,11 +25,11 @@ describe("providers/registry", () => {
     expect(resy.capabilities.snipe).toBe(true);
 
     const ot = r.get("opentable");
-    // OpenTable: browser-driven search is live (via patchright). Availability
-    // + book + cancel + list still require more engineering (or will use
-    // browser-automation that isn't wired yet) so they stay false.
+    // OpenTable: browser-driven search is live. Availability is now live via
+    // the GraphQL persisted-query path (api.ts) with a browser-scrape
+    // fallback. Book/cancel/list still require auth + browser flows.
     expect(ot.capabilities.search).toBe(true);
-    expect(ot.capabilities.availability).toBe(false);
+    expect(ot.capabilities.availability).toBe(true);
     expect(ot.capabilities.book).toBe(false);
     expect(ot.capabilities.bookUrl).toBe(true);
     expect(ot.getBookingUrl).toBeDefined();

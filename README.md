@@ -54,6 +54,10 @@ restaurant jobs list
 restaurant jobs cancel <job-id>
 restaurant jobs logs <job-id>
 
+# OpenTable: slug → numeric ID, then fast availability via the GraphQL API path
+restaurant lookup --slug carbone-new-york
+restaurant availability --venue 8033 --date 2026-05-15 --party 2 --provider opentable
+
 # OpenTable hand-off (no API booking; deep link → user confirms in browser)
 restaurant book --venue 1046758 --date 2026-05-15 --time 19:00 --party 2 \
                 --provider opentable
@@ -69,7 +73,8 @@ All destructive commands (`book`, `cancel`, `jobs cancel`, `snipe`) prompt for y
 | `search <query>` | ✓ |
 | `doctor` | ✓ |
 | `version` | ✓ |
-| `availability` | ✓ (Resy) |
+| `availability` | ✓ (Resy + OpenTable API) |
+| `lookup --slug` | ✓ (OpenTable) |
 | `book` | ✓ (Resy) |
 | `list` | ✓ (Resy) |
 | `cancel` | ✓ (Resy) |
@@ -82,13 +87,23 @@ All destructive commands (`book`, `cancel`, `jobs cancel`, `snipe`) prompt for y
 | Provider | search | availability | book | cancel | list | snipe | bookUrl |
 |---|---|---|---|---|---|---|---|
 | Resy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
-| OpenTable | ✓ | wired* | — | — | — | — | ✓ |
-
-\* OpenTable availability is coded against the `/booking/restref/availability` page's `__NEXT_DATA__` hydration payload but capability stays `false` until the parser is live-verified against a real response. Flip `capabilities.availability` in `src/providers/opentable/provider.ts` once you've confirmed a successful scrape.
+| OpenTable | ✓ | ✓ | — | — | — | — | ✓ |
 
 ### OpenTable specifics
 
-OpenTable has no public consumer API and Akamai Bot Manager blocks raw HTTP. Live venue search works via a browser-automation module: [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-nodejs) (stealth-patched Playwright fork) + persistent Chrome profile + `channel: "chrome"` + ~4.5s mouse jitter defeats Akamai reliably. The module drives `opentable.com`'s own homepage search and sniffs the `Autocomplete` GraphQL response. First run opens a headed Chrome window for ~5-10s — that's intentional; headless trips Akamai.
+OpenTable has no public consumer API and Akamai Bot Manager blocks raw HTTP. There are two live paths:
+
+- **API path (default, fast)** — direct `/dapi/fe/gql` POSTs with a CSRF token scraped from the homepage and a persisted-query SHA256 hash for the `RestaurantsAvailability` operation. No browser. Approach ported (clean reimplementation, no code copied) from Jeff Steinbok's [openclaw-hub OpenTable plugin](https://github.com/JeffSteinbok/openclaw-hub/tree/main/plugins/opentable). Jeff's Python uses `curl_cffi` for Chrome TLS fingerprinting; Node's `undici` uses a different fingerprint, so this path may 403 on Akamai depending on IP/region.
+- **Browser path (slow, reliable)** — [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-nodejs) (stealth-patched Playwright fork) + persistent Chrome profile + `channel: "chrome"` + ~4.5s mouse jitter defeats Akamai reliably. First run opens a headed Chrome window for ~5-10s; headless trips Akamai.
+
+Mode is picked at call time via `RESTAURANT_CLI_OT_MODE`:
+- `auto` (default): try API first, fall back to browser on 403.
+- `api`: API-only, errors if blocked.
+- `browser`: skip API, go straight to patchright.
+
+When OpenTable rotates the persisted-query hash (rare), set `OPENTABLE_AVAILABILITY_HASH=<sha256>` to override without a code change. Extract a fresh hash from the network tab on opentable.com.
+
+Search is browser-only — OpenTable doesn't expose a public text-search GraphQL operation, only an autocomplete that needs DOM driving. Use `restaurant lookup --slug <slug>` if you already know the URL slug; that path is API-only and skips the browser.
 
 Booking completion is intentionally **not** available through the API — OpenTable confirmation requires a logged-in session + real user interaction, and automated confirmation has historically tripped bot-detection *and* accidentally completed real reservations (see [mikehe123/opentable-reservations](https://github.com/mikehe123/opentable-reservations)). The `bookUrl` capability generates a `/restref/client` hand-off URL (verified live 2026-04-18) that OpenTable redirects into its own booking flow with the time-slot picker rendered — you complete the reservation yourself.
 

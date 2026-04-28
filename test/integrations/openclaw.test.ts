@@ -82,15 +82,17 @@ describe("integrations/openclaw", () => {
     expect(text).toMatch(/opentable\.com\/restref\/client/);
   });
 
-  it("availability on a capability-false provider errors cleanly", async () => {
+  it("a capability-false provider tool errors cleanly via the integration layer", async () => {
+    // OpenTable.availability flipped to true once the GraphQL persisted-query
+    // path landed (with a browser fallback). Cancel stays capability-false
+    // because it requires a logged-in session, so it's the surviving guard
+    // case for this test.
     const tools = mountEntry();
-    const result = await tools.get("restaurant_availability")!.execute("call-1", {
+    const result = await tools.get("restaurant_cancel")!.execute("call-1", {
       provider: "opentable",
-      venueId: "12345",
-      date: "2026-05-15",
-      partySize: 2,
+      reservationId: "rsv-1",
     });
-    expect(result.content[0]!.text).toMatch(/does not support availability/);
+    expect(result.content[0]!.text).toMatch(/does not support cancel/);
   });
 
   it("tools return { content, details: null } consistently", async () => {
