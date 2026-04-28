@@ -20,3 +20,14 @@ resy-cli
   Copyright (c) 2023 Logan Grees
   https://github.com/lgrees/resy-cli
   Licensed under the MIT License.
+
+The OpenTable GraphQL API path (`src/providers/opentable/api.ts`) was
+designed based on the publicly available knowledge encoded in the
+openclaw-hub OpenTable plugin by Jeff Steinbok. No source code was
+copied; the TypeScript module is a clean reimplementation. The
+endpoint shape, persisted-query hash, and CSRF acquisition pattern
+are the only shared artifacts.
+
+openclaw-hub
+  Copyright (c) Jeff Steinbok
+  https://github.com/JeffSteinbok/openclaw-hub

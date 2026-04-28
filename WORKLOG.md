@@ -1,5 +1,17 @@
 # Worklog
 
+## 2026-04-28
+
+### OpenTable GraphQL persisted-query path (no browser)
+
+- Added a pure-Node API path for OpenTable that mirrors Jeff Steinbok's [openclaw-hub plugin](https://github.com/JeffSteinbok/openclaw-hub/tree/main/plugins/opentable). Hits `/dapi/fe/gql` directly with: CSRF token scraped from the homepage, persisted-query SHA256 hash for `RestaurantsAvailability`, browser-realistic Chrome 131 headers, cookie jar persisted across requests.
+- Two flows live: `lookupRestaurantId(slug)` (HTML `<script id="primary-window-vars">` extraction) and `gqlAvailability(rid, date, party)` (GraphQL). New CLI subcommand: `restaurant lookup --slug <slug>`.
+- Provider gains `RESTAURANT_CLI_OT_MODE=api|browser|auto` (default `auto`: try API, fall back to patchright on `ProviderError`/403). `capabilities.availability` flipped to `true`.
+- Caveat: Jeff's Python uses `curl_cffi` to impersonate Chrome's TLS fingerprint as an Akamai dodge. Node's undici has a different fingerprint, so the API path may still 403 on some IPs/regions. The `auto` fallback to patchright is the safety net. If OpenTable rotates the persisted hash, override via `OPENTABLE_AVAILABILITY_HASH=<sha256>`.
+- Tests: 15 new (parser fixtures for the GQL availability shape with timeOffsetMinutes, lookup HTML parser, mocked-fetch lookup + gqlAvailability happy + 403 paths). Updated `registry.test.ts` and `openclaw.test.ts` to reflect the capability flip; integration test now uses `cancel` (still capability-false) as the guard case. Total 83 tests passing.
+- Decision: kept the existing browser path. The new API path is layered on top, not a replacement — `auto` mode gives users speed when Akamai lets us through, reliability when it doesn't.
+- Open: live-verify the API path against real OpenTable IDs to see how often Akamai 403s in practice. If the rate is low, default `mode` could become `api` to avoid spinning up a browser unnecessarily.
+
 ## 2026-04-16
 
 - Scaffolded restaurant-cli repo with TypeScript/Node 20+ stack.

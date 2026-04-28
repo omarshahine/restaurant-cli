@@ -3,6 +3,7 @@ import { versionCommand } from "./commands/version.js";
 import { setupCommand } from "./commands/setup.js";
 import { searchCommand } from "./commands/search.js";
 import { availabilityCommand } from "./commands/availability.js";
+import { lookupCommand } from "./commands/lookup.js";
 import { bookCommand } from "./commands/book.js";
 import { snipeCommand } from "./commands/snipe.js";
 import { listCommand } from "./commands/list.js";
@@ -22,6 +23,7 @@ const main = defineCommand({
     setup: setupCommand,
     search: searchCommand,
     availability: availabilityCommand,
+    lookup: lookupCommand,
     book: bookCommand,
     snipe: snipeCommand,
     list: listCommand,

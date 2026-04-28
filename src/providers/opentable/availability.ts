@@ -2,6 +2,7 @@ import type { AvailabilityQuery, Credentials, Slot } from "../types.js";
 import { OpenTableClient } from "./client.js";
 import { buildBookingUrl } from "./deeplink.js";
 import { availabilityViaBrowser } from "./browser.js";
+import { gqlAvailability } from "./api.js";
 
 /**
  * Two parsers live in this file because OpenTable's availability data
@@ -229,6 +230,118 @@ export async function getAvailabilityHttp(q: AvailabilityQuery): Promise<Slot[]>
     partySize: q.partySize,
   });
   return parseAvailabilityResponse(raw, {
+    venueId: q.venueId,
+    date: q.date,
+    partySize: q.partySize,
+  });
+}
+
+// ---- GraphQL persisted-query parser (api.ts path) ------------------------
+
+/**
+ * Shape of one slot inside `data.availability[0].availabilityDays[0].slots[]`
+ * from the `RestaurantsAvailability` persisted GraphQL query.
+ *
+ * `timeOffsetMinutes` is signed minutes from the `time` variable sent on the
+ * request (the anchor). E.g. anchor 19:00 + offset 30 = 19:30 slot.
+ */
+interface GqlAvailabilitySlot {
+  isAvailable?: boolean;
+  timeOffsetMinutes?: number;
+  slotHash?: string;
+  type?: string;
+  attributes?: unknown[];
+}
+
+interface GqlAvailabilityResponse {
+  data?: {
+    availability?: Array<{
+      availabilityDays?: Array<{
+        slots?: GqlAvailabilitySlot[];
+      }>;
+    } | null>;
+  };
+}
+
+function addMinutesToTime(anchor: string, offset: number): string {
+  const m = anchor.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m || !m[1] || !m[2]) return anchor;
+  const total = Number(m[1]) * 60 + Number(m[2]) + offset;
+  // Wrap into [0, 1440) — OpenTable shouldn't return overflowing offsets in
+  // practice, but cheap to handle defensively.
+  const wrapped = ((total % 1440) + 1440) % 1440;
+  const h = Math.floor(wrapped / 60);
+  const min = wrapped % 60;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+/**
+ * Pure parser: `RestaurantsAvailability` GraphQL response → Slot[]. The
+ * response keys slots by `timeOffsetMinutes` from a request-side anchor;
+ * the caller passes `anchorTime` (defaults 19:00) so we can resolve absolute
+ * times.
+ *
+ * Drops slots where `isAvailable` is explicitly `false`. Missing flag is
+ * treated as available (matches OpenTable's UI behavior).
+ */
+export function parseGqlAvailabilityResponse(
+  raw: unknown,
+  ctx: { venueId: string; date: string; partySize: number; anchorTime?: string },
+): Slot[] {
+  const r = raw as GqlAvailabilityResponse;
+  const availability = r?.data?.availability ?? [];
+  if (!availability.length) return [];
+
+  const restaurant = availability[0];
+  if (!restaurant) return [];
+
+  const days = restaurant.availabilityDays ?? [];
+  if (!days.length) return [];
+
+  const day = days[0];
+  if (!day) return [];
+
+  const rawSlots = day.slots ?? [];
+  const anchor = ctx.anchorTime ?? "19:00";
+
+  return rawSlots
+    .filter((s) => s.isAvailable !== false)
+    .map((s): Slot => {
+      const time = addMinutesToTime(anchor, s.timeOffsetMinutes ?? 0);
+      return {
+        token: buildBookingUrl({
+          restaurantId: ctx.venueId,
+          date: ctx.date,
+          time,
+          partySize: ctx.partySize,
+        }),
+        time,
+        ...(s.slotHash ? { configId: s.slotHash } : {}),
+        ...(s.type ? { type: s.type } : {}),
+        raw: s,
+      };
+    });
+}
+
+/**
+ * Live availability via the GraphQL persisted-query path (no browser).
+ *
+ * Acquires CSRF + cookies from the homepage, then POSTs to /dapi/fe/gql
+ * with the `RestaurantsAvailability` persisted hash. Fast (~2 round trips,
+ * no headless render) but may 403 on Akamai if undici's TLS fingerprint is
+ * flagged. The provider's `auto` mode falls back to the browser scrape on
+ * failure.
+ */
+export async function getAvailabilityViaApi(
+  q: AvailabilityQuery,
+  _creds: Credentials,
+): Promise<Slot[]> {
+  const raw = await gqlAvailability({
+    restaurantId: q.venueId,
+    date: q.date,
+    partySize: q.partySize,
+  });
+  return parseGqlAvailabilityResponse(raw, {
     venueId: q.venueId,
     date: q.date,
     partySize: q.partySize,

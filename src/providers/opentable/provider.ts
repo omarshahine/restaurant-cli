@@ -1,41 +1,98 @@
-import type { AuthStatus, BookRequest, BookResult, Credentials, Provider, Reservation } from "../types.js";
-import { CapabilityError } from "../../core/errors.js";
+import type {
+  AuthStatus,
+  AvailabilityQuery,
+  BookRequest,
+  BookResult,
+  Credentials,
+  Provider,
+  Reservation,
+  Slot,
+} from "../types.js";
+import { CapabilityError, ProviderError } from "../../core/errors.js";
 import { searchVenues } from "./search.js";
 import { buildBookingUrl } from "./deeplink.js";
-import { getAvailability as getAvailabilityViaBrowser } from "./availability.js";
+import {
+  getAvailability as getAvailabilityViaBrowser,
+} from "./availability.js";
+import { getAvailabilityViaApi } from "./availability.js";
 
 /**
  * OpenTable provider.
  *
- * OpenTable has no public consumer API, and live probing (2026-04-16)
- * confirmed that the `/dapi/` endpoints used by opentable.com's React app
- * are protected by Akamai Bot Manager with TLS-fingerprint blocking. Pure
- * Node.js `fetch()` gets a 403 regardless of how closely we mimic Chrome
- * headers. The HTTP parser code in `client.ts`, `search.ts`, and
- * `availability.ts` is kept as scaffolding for a future browser-automation
- * module (which will feed real data through the same parsers) but those
- * capabilities are declared `false` here because they don't currently work.
+ * Two paths to live data, picked by `RESTAURANT_CLI_OT_MODE`:
  *
- * The one capability that DOES work today is `bookUrl` — a pure URL
- * construction that opens opentable.com's booking page pre-filled with the
- * venue, date, time, and party size. The user completes the reservation in
- * their own browser with their own OpenTable account.
+ *   - `api` (fast, no browser)
+ *       Hits `/dapi/fe/gql` directly with a CSRF token scraped from the
+ *       homepage and a persisted-query SHA256 hash. Approach ported from
+ *       Jeff Steinbok's openclaw-hub OpenTable plugin. May 403 on Akamai
+ *       since Node's undici fingerprint differs from a real Chrome TLS
+ *       handshake (Jeff's Python uses `curl_cffi` to dodge this).
+ *
+ *   - `browser` (slow, reliable)
+ *       Drives the booking page with patchright + a persistent Chrome
+ *       profile so Akamai's challenge JS passes. Falls back to
+ *       `__NEXT_DATA__` parsing.
+ *
+ *   - `auto` (default)
+ *       Try `api` first; if it throws (typically 403), fall back to browser.
+ *
+ * Search is still browser-only — OpenTable doesn't expose a public text
+ * search GraphQL operation, only an autocomplete that needs DOM driving.
  *
  * Safety invariant from mikehe123/opentable-reservations: never auto-submit
- * a booking. Hand-off only.
+ * a booking. Hand-off only via getBookingUrl.
  */
+
+type OtMode = "api" | "browser" | "auto";
+
+function getMode(): OtMode {
+  const m = process.env["RESTAURANT_CLI_OT_MODE"];
+  if (m === "api" || m === "browser" || m === "auto") return m;
+  return "auto";
+}
+
+async function getAvailabilityDispatch(
+  q: AvailabilityQuery,
+  creds: Credentials,
+): Promise<Slot[]> {
+  const mode = getMode();
+  if (mode === "api") {
+    return getAvailabilityViaApi(q, creds);
+  }
+  if (mode === "browser") {
+    return getAvailabilityViaBrowser(q, creds);
+  }
+  // auto: try API first, fall back to browser on 403/network errors.
+  try {
+    const slots = await getAvailabilityViaApi(q, creds);
+    if (slots.length > 0) return slots;
+    // Empty isn't necessarily an API failure — could be a fully-booked night.
+    // But it could also be the persisted-query hash drifting and returning
+    // {availability: [null]}. We err toward "trust the API" here; users who
+    // want browser-confirmation can set RESTAURANT_CLI_OT_MODE=browser.
+    return slots;
+  } catch (err) {
+    if (process.env["RESTAURANT_CLI_DEBUG"]) {
+      // eslint-disable-next-line no-console
+      console.error(`[opentable] api path failed, falling back to browser: ${(err as Error).message}`);
+    }
+    if (err instanceof ProviderError) {
+      return getAvailabilityViaBrowser(q, creds);
+    }
+    throw err;
+  }
+}
+
 export const openTableProvider: Provider = {
   id: "opentable",
   displayName: "OpenTable",
   capabilities: {
-    // Browser-driven search live as of 2026-04-17.
-    // Availability: transport + parser are wired (see availability.ts) but
-    // NOT live-verified against the real __NEXT_DATA__ shape. The parser is
-    // defensive — it searches multiple candidate paths and returns []
-    // gracefully if the shape doesn't match. Flip this to `true` after one
-    // successful live run to enable it from the CLI.
+    // Browser-driven autocomplete search.
     search: true,
-    availability: false,
+    // GraphQL persisted-query path (api.ts) is now the default and falls
+    // back to the browser scrape on Akamai 403. Live as of the commit that
+    // introduced the api/browser/auto switch.
+    availability: true,
     book: false,
     cancel: false,
     list: false,
@@ -44,20 +101,19 @@ export const openTableProvider: Provider = {
   },
   auth: {
     async validate(_creds: Credentials): Promise<AuthStatus> {
-      return {
-        ok: true,
-        detail: "anonymous (browser-driven search via patchright)",
-      };
+      const mode = getMode();
+      const detail =
+        mode === "api"
+          ? "anonymous (GraphQL persisted-query path)"
+          : mode === "browser"
+            ? "anonymous (browser-driven via patchright)"
+            : "anonymous (api with browser fallback)";
+      return { ok: true, detail };
     },
     setupPrompts: () => [],
   },
   searchVenues,
-  // Real implementation is `getAvailabilityViaBrowser` (imports from
-  // ./availability). It's safe to leave wired because the CLI gate
-  // (`capabilities.availability === false`) blocks invocation from the
-  // `restaurant availability` command. Flip the capability after verifying
-  // the __NEXT_DATA__ parser against a live response.
-  getAvailability: getAvailabilityViaBrowser,
+  getAvailability: getAvailabilityDispatch,
   async book(_r: BookRequest, _creds: Credentials): Promise<BookResult> {
     throw new CapabilityError("opentable", "book (use getBookingUrl for hand-off)");
   },
