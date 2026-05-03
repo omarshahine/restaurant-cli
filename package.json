@@ -1,6 +1,6 @@
 {
   "name": "restaurant-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Pluggable CLI for booking restaurant reservations across Resy, OpenTable, Tock, and other providers",
   "type": "module",
   "bin": {
@@ -91,7 +91,7 @@
     "test:watch": "vitest",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "prepare": "npm run build",
+    "prepare": "test -d dist || npm run build",
     "prepublishOnly": "npm run build && npm run typecheck && npm run test"
   },
   "dependencies": {

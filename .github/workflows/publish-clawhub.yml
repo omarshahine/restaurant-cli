@@ -37,6 +37,16 @@ jobs:
       - name: Authenticate
         run: clawhub login --token "${{ secrets.CLAWHUB_TOKEN }}" --no-browser
 
+      - name: Install + build (so dist/ exists before clawhub's prod install)
+        # ClawHub's publish runs its own `npm install --production` on the
+        # tarball, which fires our `prepare` hook. The hook calls
+        # `npm run build` (tsup) which isn't available without devDeps. We
+        # build dist/ here so the prepare hook short-circuits via
+        # `test -d dist`.
+        run: |
+          npm ci
+          npm run build
+
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
