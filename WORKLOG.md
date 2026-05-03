@@ -1,5 +1,15 @@
 # Worklog
 
+## 2026-05-03
+
+### Issue #24 — published to npm + OIDC trusted publishing
+
+- Jeff Steinbok opened [#24](https://github.com/omarshahine/restaurant-cli/issues/24): the README implied the package was on npm but it wasn't — every install path he tried (npm i, github install, clone+link, openclaw plugins install) hit a different blocker.
+- First publish: ran `npm publish --access public` from local. `restaurant-cli@0.1.0` is now on npm.
+- Switched `.github/workflows/publish-npm.yml` to OIDC. No more `NPM_TOKEN` secret — uses `id-token: write` permission + `npm publish --provenance`. Trusted Publisher configured at https://www.npmjs.com/package/restaurant-cli/access pointing at `publish-npm.yml`. Future `vX.Y.Z` tag pushes auto-publish via OIDC.
+- Added a `prepare: "npm run build"` script. Now `npm i -g github:omarshahine/restaurant-cli` builds `dist/` automatically (was Jeff's original install attempt). Standard prep hook that fires on git installs and `npm install`.
+- README install section rewritten: `npm i -g restaurant-cli` is now the primary path, with clone and github fallbacks below. OpenClaw plugin install collapses to `npm i -g restaurant-cli && openclaw plugins install restaurant-cli`.
+
 ## 2026-04-28
 
 ### OpenTable GraphQL persisted-query path (no browser)
