@@ -4,27 +4,35 @@ Pluggable CLI for booking restaurant reservations across Resy, OpenTable, Tock, 
 
 ## Install
 
-Once published to npm:
-
 ```bash
 npm i -g restaurant-cli
 # or
 npx restaurant-cli --help
 ```
 
-For local development before publish:
+OpenTable browser-automation support is optional (the API path doesn't need it):
+
+```bash
+npm i -g patchright
+npx playwright install chromium
+```
+
+### From a clone (for development)
 
 ```bash
 git clone https://github.com/omarshahine/restaurant-cli.git
 cd restaurant-cli
-npm install
-npm run build
-npm link         # puts `restaurant` on your PATH
-
-# OpenTable support (optional — browser automation peer deps):
-npm i patchright
-npx playwright install chromium
+npm install        # `prepare` runs `npm run build` automatically
+npm link           # puts `restaurant` on your PATH
 ```
+
+### From GitHub directly (no npm)
+
+```bash
+npm i -g github:omarshahine/restaurant-cli
+```
+
+The package's `prepare` script builds `dist/` automatically during install, so the `restaurant` binary is on your PATH right away.
 
 ## Quick start
 
@@ -132,12 +140,9 @@ Adding a new provider is a two-file change: create `src/providers/<name>/` imple
 
 ## OpenClaw plugin
 
-Pre-npm-publish install from the repo:
-
 ```bash
-git clone https://github.com/omarshahine/restaurant-cli.git
-cd restaurant-cli
-./scripts/install-openclaw.sh     # deps + build + link bin + openclaw plugin register
+npm i -g restaurant-cli
+openclaw plugins install restaurant-cli
 restaurant setup resy-openclaw    # auth + mirror creds into OpenClaw config
 # Restart the OpenClaw gateway
 ```
@@ -149,11 +154,12 @@ store); appending `-openclaw` additionally mirrors them into
 gateway-side tools can find them. Works for any provider — `opentable-openclaw`,
 `tock-openclaw`, etc.
 
-Once the CLI is published to npm this collapses to:
+### From a clone
 
 ```bash
-npm i -g restaurant-cli
-openclaw plugins install restaurant-cli
+git clone https://github.com/omarshahine/restaurant-cli.git
+cd restaurant-cli
+./scripts/install-openclaw.sh     # deps + build + link bin + openclaw plugin register
 restaurant setup resy-openclaw
 ```
 

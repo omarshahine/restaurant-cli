@@ -1,15 +1,17 @@
 name: Publish to NPM
 
 # Fires on `vX.Y.Z` tag push. Publishes restaurant-cli to the public npm
-# registry after running the `prepublishOnly` script (build + typecheck +
-# test). Requires the `NPM_TOKEN` repo secret with publish access to the
-# `restaurant-cli` package.
+# registry via npm's Trusted Publisher (OIDC) — no NPM_TOKEN needed.
 #
-# Generate a token via https://www.npmjs.com/settings/~/tokens — prefer a
-# granular access token scoped to the `restaurant-cli` package with
-# "Read and write" permission. Paste it into the repo's Settings →
-# Secrets and variables → Actions as `NPM_TOKEN`, or use:
-#   gh secret set NPM_TOKEN -R omarshahine/restaurant-cli
+# Trust is established at https://www.npmjs.com/package/restaurant-cli/access
+# pointing at this workflow file (publish-npm.yml). The first publish was
+# done manually from a maintainer machine; every publish after that flows
+# through this workflow.
+#
+# `id-token: write` is required for npm to verify the OIDC token and
+# `--provenance` records the build's source-of-truth (commit SHA, workflow
+# run, runner) on the registry so consumers can verify the package wasn't
+# tampered with after CI.
 
 on:
   push:
@@ -18,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
@@ -50,16 +53,15 @@ jobs:
           fi
 
       - name: Verify package contents
+        # `npm install` above already triggered `prepare` → `npm run build`,
+        # so dist/ is up to date by the time we get here. We just typecheck,
+        # test, and dry-run the pack to surface regressions in CI logs.
+        # `npm publish` below additionally fires `prepublishOnly`, which
+        # re-runs build + typecheck + test as a final safety gate.
         run: |
-          npm run build
           npm run typecheck
           npm run test
           npm pack --dry-run
 
-      - name: Publish to NPM
-        # prepublishOnly fires here too (build + typecheck + test), so the
-        # above "Verify" step is technically redundant — we keep it
-        # explicit for clearer CI logs when something regresses.
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to NPM (with provenance via OIDC)
+        run: npm publish --access public --provenance

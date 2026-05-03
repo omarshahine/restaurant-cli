@@ -88,6 +88,7 @@
     "test:watch": "vitest",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build && npm run typecheck && npm run test"
   },
   "dependencies": {
