@@ -1,6 +1,6 @@
 {
   "name": "restaurant-cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Pluggable CLI for booking restaurant reservations across Resy, OpenTable, Tock, and other providers",
   "type": "module",
   "bin": {
@@ -60,7 +60,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/omarshahine/restaurant-cli.git"
+    "url": "git+https://github.com/omarshahine/restaurant-cli.git"
   },
   "bugs": {
     "url": "https://github.com/omarshahine/restaurant-cli/issues"
