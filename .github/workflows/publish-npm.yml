@@ -53,14 +53,15 @@ jobs:
           fi
 
       - name: Verify package contents
+        # `npm install` above already triggered `prepare` → `npm run build`,
+        # so dist/ is up to date by the time we get here. We just typecheck,
+        # test, and dry-run the pack to surface regressions in CI logs.
+        # `npm publish` below additionally fires `prepublishOnly`, which
+        # re-runs build + typecheck + test as a final safety gate.
         run: |
-          npm run build
           npm run typecheck
           npm run test
           npm pack --dry-run
 
       - name: Publish to NPM (with provenance via OIDC)
-        # prepublishOnly fires here too (build + typecheck + test), so the
-        # above "Verify" step is technically redundant — we keep it
-        # explicit for clearer CI logs when something regresses.
         run: npm publish --access public --provenance
