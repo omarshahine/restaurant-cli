@@ -42,9 +42,10 @@ jobs:
         # tarball, which fires our `prepare` hook. The hook calls
         # `npm run build` (tsup) which isn't available without devDeps. We
         # build dist/ here so the prepare hook short-circuits via
-        # `test -d dist`.
+        # `test -d dist`. (Repo uses pnpm-lock.yaml; `npm install` is fine
+        # for a one-shot CI build and avoids needing pnpm setup here.)
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Extract version from tag
