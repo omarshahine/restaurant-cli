@@ -1,6 +1,6 @@
 {
   "name": "restaurant-cli",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Pluggable CLI for booking restaurant reservations across Resy, OpenTable, Tock, and other providers",
   "type": "module",
   "bin": {
