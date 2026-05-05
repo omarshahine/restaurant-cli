@@ -21,7 +21,7 @@
  *
  * What does NOT work yet (the remaining engineering):
  *   - Calling `/dapi/fe/gql` from within page context via the page's own
- *     fetch helper returns 403. The page's own requests include headers
+ *     XHR helper returns 403. The page's own requests include headers
  *     (CSRF / persisted query hash / ot-origin) that aren't obvious to
  *     replicate.
  *   - `locator.type()` into the search input — times out, likely an overlay
