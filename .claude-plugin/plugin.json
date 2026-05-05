@@ -1,6 +1,6 @@
 {
   "name": "restaurant-cli",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Pluggable reservation booking — Resy, OpenTable, Tock, and other providers",
   "author": {
     "name": "Omar Shahine",

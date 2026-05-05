@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import nock from "nock";
-import { loginResy, RESY_PUBLIC_API_KEY } from "../../../src/providers/resy/auth.js";
+import { loginResy, RESY_PUBLIC_CLIENT_ID } from "../../../src/providers/resy/auth.js";
 
 describe("providers/resy/login", () => {
   it("exchanges email+password for a durable auth token", async () => {
@@ -15,7 +15,7 @@ describe("providers/resy/login", () => {
 
     const creds = await loginResy({ email: "omar@example.com", password: "hunter2" });
     expect(creds["authToken"]).toBe("eyJ0eXAiOiJKV1Q.jwt.here");
-    expect(creds["apiKey"]).toBe(RESY_PUBLIC_API_KEY);
+    expect(creds["apiKey"]).toBe(RESY_PUBLIC_CLIENT_ID);
     expect(creds["email"]).toBe("omar@example.com");
     expect(creds["firstName"]).toBe("Omar");
     // Password must NEVER appear in the output creds — it is consumed and discarded.
