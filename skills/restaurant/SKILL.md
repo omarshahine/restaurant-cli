@@ -1,6 +1,29 @@
 ---
 name: restaurant
 description: This skill should be used when the user asks to "book a restaurant", "make a reservation", "search for dinner", "check availability at", "snipe a reservation", "cancel a reservation", or mentions a restaurant name alongside a date/time. Currently implements Resy (full booking) and OpenTable (search + handoff URL); Tock and SevenRooms are stubbed for future support. Use the `restaurant` CLI (Claude Code context) or the `restaurant_*` tools (OpenClaw context).
+metadata:
+  openclaw:
+    requires:
+      bins: [restaurant]
+      env:
+        # Provider auth tokens (read at fire time by the snipe wrapper).
+        - RESY_API_KEY
+        - RESY_AUTH_TOKEN
+        - OPENTABLE_AUTH_TOKEN
+        - TOCK_AUTH_TOKEN
+        - SEVENROOMS_AUTH_TOKEN
+        # OpenTable provider tunables.
+        - OPENTABLE_AVAILABILITY_HASH
+        - RESTAURANT_CLI_BROWSER_CHANNEL
+        - RESTAURANT_CLI_OT_PROFILE_DIR
+        - RESTAURANT_CLI_OT_MODE
+        - RESTAURANT_CLI_HEADLESS
+        - RESTAURANT_CLI_DEBUG
+        # Standard config-dir env (read by config.ts).
+        - HOME
+        - XDG_CONFIG_HOME
+        - XDG_STATE_HOME
+        - NODE_ENV
 ---
 
 # Restaurant reservations
