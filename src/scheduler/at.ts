@@ -173,11 +173,11 @@ export class AtScheduler implements Scheduler {
   /**
    * Write the command inside a shell wrapper that:
    *   - imports ONLY restaurant-cli provider tokens from ~/.secrets.env
-   *     (e.g. RESY_AUTH_TOKEN). Sourcing the entire env file would expose
-   *     unrelated secrets (database URLs, GitHub tokens, etc.) to the
-   *     scheduled `at` job, which the ClawHub LLM scan flags as
-   *     SECRET_EXPOSURE. Filtering keeps the booking process restricted
-   *     to the credentials it actually needs.
+   *     (e.g. RESY_AUTH_TOKEN). Sourcing the entire env file would
+   *     expose unrelated secrets (database URLs, GitHub tokens, etc.)
+   *     to the scheduled `at` job. Filtering to a small allowlist keeps
+   *     the booking process restricted to the credentials it actually
+   *     needs.
    *   - redirects all output to a per-job log file under XDG_STATE_HOME
    *   - emits a tight JSONL line at start + end for `restaurant jobs logs`
    *
