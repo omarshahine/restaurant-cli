@@ -6,7 +6,7 @@
  */
 
 import { realpathSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { whichBinary } from "./safe-shell.js";
 
 /**
  * Resolve the absolute path to the `restaurant` binary so an `at`-scheduled
@@ -18,14 +18,8 @@ import { execSync } from "node:child_process";
  *   3. bare `"restaurant"` — at-daemon's PATH may or may not find it; fallback only
  */
 export function resolveCliBinary(): string {
-  try {
-    const out = execSync("which restaurant", { stdio: ["ignore", "pipe", "ignore"] })
-      .toString()
-      .trim();
-    if (out) return out;
-  } catch {
-    // which failed — fall through to the argv-based fallback.
-  }
+  const onPath = whichBinary("restaurant");
+  if (onPath) return onPath;
   try {
     return realpathSync(process.argv[1] ?? "restaurant");
   } catch {

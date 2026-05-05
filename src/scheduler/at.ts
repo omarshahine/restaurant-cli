@@ -1,12 +1,9 @@
-import { execFile, spawn } from "node:child_process";
-import { promisify } from "node:util";
 import { appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import type { ScheduledJob, Scheduler } from "./index.js";
 import { loadJobs, saveJobs } from "./store.js";
-
-const execFileAsync = promisify(execFile);
+import { runCli, spawnProcess, whichBinary } from "../core/safe-shell.js";
 
 /**
  * POSIX `at` backend.
@@ -117,20 +114,19 @@ export class AtScheduler implements Scheduler {
   }
 
   private async cancelViaAtrm(atJobId: string): Promise<void> {
-    await execFileAsync("atrm", [atJobId]);
+    await runCli("atrm", [atJobId]);
   }
 
   async healthCheck(): Promise<{ ok: boolean; detail?: string }> {
-    try {
-      const { stdout } = await execFileAsync("which", ["at"]);
-      return { ok: true, detail: stdout.trim() };
-    } catch {
-      return {
-        ok: false,
-        detail:
-          'POSIX `at` not found on PATH. On macOS enable it with `sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.atrun.plist`.',
-      };
+    const atPath = whichBinary("at");
+    if (atPath) {
+      return { ok: true, detail: atPath };
     }
+    return {
+      ok: false,
+      detail:
+        'POSIX `at` not found on PATH. On macOS enable it with `sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.atrun.plist`.',
+    };
   }
 
   /**
@@ -148,7 +144,7 @@ export class AtScheduler implements Scheduler {
     const t = localTimestamp(job.runAt);
 
     const atJobId = await new Promise<string>((resolve, reject) => {
-      const child = spawn("at", ["-t", t], { stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawnProcess("at", ["-t", t], { stdio: ["pipe", "pipe", "pipe"] });
       let stderr = "";
       child.stderr.on("data", (chunk: Buffer) => {
         stderr += chunk.toString();
@@ -176,8 +172,12 @@ export class AtScheduler implements Scheduler {
 
   /**
    * Write the command inside a shell wrapper that:
-   *   - sources ~/.secrets.env and ~/.secrets-macbook-pro.env if present
-   *     (so RESY_AUTH_TOKEN and friends are available)
+   *   - imports ONLY restaurant-cli provider tokens from ~/.secrets.env
+   *     (e.g. RESY_AUTH_TOKEN). Sourcing the entire env file would expose
+   *     unrelated secrets (database URLs, GitHub tokens, etc.) to the
+   *     scheduled `at` job, which the ClawHub LLM scan flags as
+   *     SECRET_EXPOSURE. Filtering keeps the booking process restricted
+   *     to the credentials it actually needs.
    *   - redirects all output to a per-job log file under XDG_STATE_HOME
    *   - emits a tight JSONL line at start + end for `restaurant jobs logs`
    *
@@ -193,6 +193,20 @@ export class AtScheduler implements Scheduler {
       appendFileSync(logFile, "", { mode: 0o600 });
     }
 
+    // Provider tokens this CLI may need at fire time. Add new providers
+    // here when they ship; unrelated env vars stay isolated.
+    const allowedKeys = [
+      "RESY_API_KEY",
+      "RESY_AUTH_TOKEN",
+      "OPENTABLE_AUTH_TOKEN",
+      "TOCK_AUTH_TOKEN",
+      "SEVENROOMS_AUTH_TOKEN",
+    ];
+    // Anchor each key in a regex alternation. We use `eval` on the matched
+    // `export KEY=...` lines rather than `source`-ing the file so unrelated
+    // exports never enter the wrapper's environment.
+    const keyAlt = allowedKeys.join("|");
+
     // We wrap in `{ ... } >> log 2>&1` to capture both streams in order.
     // The JSONL start/end lines are precise enough for the jobs-logs UI to
     // tell whether the at-fire succeeded or crashed.
@@ -200,9 +214,14 @@ export class AtScheduler implements Scheduler {
     const lines = [
       `#!/bin/bash`,
       `set +e`,
+      `__rcli_import_keys() {`,
+      `  local file="$1"`,
+      `  [ -f "$file" ] || return 0`,
+      `  eval "$(grep -E '^export (${keyAlt})=' "$file" 2>/dev/null || true)"`,
+      `}`,
       `{`,
-      `  [ -f "$HOME/.secrets.env" ] && . "$HOME/.secrets.env"`,
-      `  [ -f "$HOME/.secrets-macbook-pro.env" ] && . "$HOME/.secrets-macbook-pro.env"`,
+      `  __rcli_import_keys "$HOME/.secrets.env"`,
+      `  __rcli_import_keys "$HOME/.secrets-macbook-pro.env"`,
       `  START_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)`,
       `  echo "{\\"ts\\":\\"$START_TS\\",\\"event\\":\\"snipe.start\\",\\"jobId\\":\\"${job.id}\\"}"`,
       `  ${escaped}`,
