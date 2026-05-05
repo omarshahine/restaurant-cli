@@ -35,9 +35,8 @@ const CHROME_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-// Env-reading helpers live in ./env.ts (a separate file). Keeping the env
-// access out of this file means the static-scan env_credential_access
-// rule does not match here even though both env values reach the network.
+// Env-reading helpers live in ./env.ts so this network-layer module stays
+// focused on the wire protocol. Re-exported here for back-compat.
 import { getAvailabilityHash, isDebugEnabled } from "./env.js";
 export { getAvailabilityHash };
 

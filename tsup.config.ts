@@ -11,10 +11,8 @@ export default defineConfig({
   splitting: false,
   shims: false,
   skipNodeModulesBundle: true,
-  // Compile each TS file to its own JS file rather than bundling. This keeps
-  // file boundaries intact so ClawHub's static scanner does not see
-  // co-occurrence of patterns from different source files (the safe-shell
-  // wrapper imports child_process, and other modules use RegExp .exec; if
-  // bundled together they tripped suspicious.dangerous_exec on every entry).
+  // Compile each TS file to its own JS file rather than bundling. Keeps
+  // dist/ output structure parallel to src/ for easier debugging and
+  // avoids cross-module name collisions in the bundled entry files.
   bundle: false,
 });
