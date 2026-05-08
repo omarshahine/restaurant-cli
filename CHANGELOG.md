@@ -14,6 +14,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - `agents/opentable-agent.md` for the Claude Code plugin.
 - 8 new tests (search, availability, deep-link builder, registry capability probes).
 
+### Changed
+- `restaurant_search` and `restaurant_availability` tool descriptions now spell out per-provider capability differences (Resy = full booking, OpenTable = search/availability/deep-link only, Tock/SevenRooms unsupported) and point at the `restaurant` skill for the live capability matrix. Surfaces this guidance in the model's tool list rather than only in the skill body, so the right provider gets picked without first reading the skill.
+
 ### Fixed
 - `restaurant doctor` now honestly validates auth for anonymous providers (pre-existing bug surfaced by OpenTable).
 

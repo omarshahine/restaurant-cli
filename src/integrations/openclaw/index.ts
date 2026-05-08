@@ -170,7 +170,7 @@ export function createOpenClawEntry(): {
         name: "restaurant_search",
         label: "Search Venues",
         description:
-          "Search venues on a reservation platform by free-text query. Returns {id, name, city, url} for each hit.",
+          "Search venues on a reservation platform by free-text query. Returns {id, name, city, url} per hit. Provider capabilities differ (Resy supports the full booking flow; OpenTable supports search + availability + a deep-link booking URL but cannot complete a booking via API; Tock and SevenRooms are not yet supported). Read the `restaurant` skill for the current capability matrix before chaining tools.",
         parameters: searchSchema,
         async execute(_id, params) {
           const provider = resolveProvider(params["provider"] as string | undefined);
@@ -200,7 +200,7 @@ export function createOpenClawEntry(): {
         name: "restaurant_availability",
         label: "Check Availability",
         description:
-          "List open time slots for a venue on a given date. Each slot carries a token that can be fed to restaurant_book.",
+          "List open time slots for a venue on a given date. Slot tokens feed restaurant_book on Resy. On OpenTable, the slot token is a deep-link URL — booking must be completed by the user in their browser; do not attempt restaurant_book for OpenTable slots. Tock and SevenRooms are not yet supported; this tool will return a capability error for those. Read the `restaurant` skill for the current provider matrix.",
         parameters: availabilitySchema,
         async execute(_id, params) {
           const provider = resolveProvider(params["provider"] as string | undefined);
@@ -233,7 +233,7 @@ export function createOpenClawEntry(): {
         name: "restaurant_book",
         label: "Book Reservation",
         description:
-          "Confirm a reservation. DESTRUCTIVE — books immediately against the configured account. Confirm with the user before invoking.",
+          "Confirm a reservation. DESTRUCTIVE — books immediately against the configured account. Confirm with the user before invoking. Resy only: OpenTable slot tokens are deep-link URLs and cannot be booked via API — direct the user to complete the booking in their browser instead. Tock and SevenRooms are not yet supported.",
         parameters: bookSchema,
         async execute(_id, params) {
           const provider = resolveProvider(params["provider"] as string | undefined);
