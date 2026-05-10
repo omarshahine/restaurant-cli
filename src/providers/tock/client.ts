@@ -1,22 +1,36 @@
 /**
  * Tock HTTP client.
  *
- * Tock has no public consumer API. Reverse-engineered endpoints:
+ * Tock has no public consumer API. Live-probed reality (2026-05-10):
  *
- *   - Anonymous reads (search, availability, restaurant detail):
- *     GET https://www.exploretock.com/api/consumer/v2/...
+ *   - Public surface lives at `https://www.exploretock.com/api/graphql/<Op>`
+ *     (GraphQL, not REST). Operations observed on the Suzuki venue page:
+ *       FetchBusinessAccolades, SafetyMeasuresForCurrentBusiness,
+ *       BusinessFaqs, GetTockTenConfigsForCurrentBusiness.
+ *     Search + availability operation names not yet captured (Suzuki's
+ *     reservations weren't open during the probe — Tock releases on the
+ *     15th of each month for the following month, so availability XHRs
+ *     don't fire when there's nothing to render).
  *
- *   - Authenticated reads (list reservations, profile):
- *     same path, sessionCookies required.
+ *   - Cloudflare protects the whole `/api/*` surface from raw fetch. undici
+ *     gets 403 with a JS challenge. Trafilatura (urllib3) passes for some
+ *     pages but not all — Cloudflare's per-page rules are aggressive on
+ *     "hot" venues (Suzuki today returns 403; Kashiba returns 200).
  *
- *   - Book / cancel: NOT via this client — Tock's checkout uses an in-page
- *     Braintree CSRF flow that can't be replayed from raw fetch. Live book
- *     paths go through patchright in `book.ts`. This client only handles
- *     the read side.
+ *   - patchright + persistent profile + `channel: "chrome"` + ~5s mouse
+ *     jitter passes Cloudflare reliably for both pages and `/api/graphql/*`.
+ *     This is the verified-working path. See `browser.ts` for the launch
+ *     config; the search/availability XHR capture pipeline is the next
+ *     session's work.
  *
- * Cloudflare protects exploretock.com. Like OpenTable's Akamai layer, the
- * undici TLS fingerprint may 403. The provider's `auto` mode falls back to
- * a browser-driven scrape just like OpenTable does.
+ *   - Anonymous reads CANNOT work without one of:
+ *       (a) imported session cookies via `restaurant auth login tock`
+ *       (b) the patchright fallback (next session)
+ *
+ * This client retains the GraphQL request shape so the next iteration can
+ * wire it up against the right operation names. Today every call returns
+ * the Cloudflare 403 unless `creds.sessionCookies` is populated AND those
+ * cookies are still valid.
  */
 
 import {
@@ -27,6 +41,7 @@ import {
 import type { TockCredentials } from "./schemas.js";
 
 const BASE_URL = "https://www.exploretock.com";
+const GQL_URL = `${BASE_URL}/api/graphql`;
 const DEFAULT_TIMEOUT_MS = 20000;
 
 const CHROME_UA =
@@ -78,71 +93,82 @@ export class TockClient {
   }
 
   /**
-   * Restaurant search. Tock exposes an autocomplete endpoint used by the site
-   * header search.
+   * GraphQL operation by name. The Tock frontend POSTs to
+   * `/api/graphql/<OperationName>` with `{operationName, variables, query?}`.
+   * We send the operation name in the URL (as the page does) and the
+   * variables in the body. Real persisted-query hashes are unknown today;
+   * Tock may require sending the full GraphQL string, which we don't have.
+   *
+   * Today this exists as scaffolding so the browser fallback can call into
+   * the same shape later. Direct invocation still 403s on Cloudflare.
    */
-  async searchRestaurants(params: { query: string; limit?: number }): Promise<unknown> {
-    const qs = new URLSearchParams({
-      q: params.query,
-      limit: String(params.limit ?? 20),
+  async gql(operationName: string, variables: Record<string, unknown>): Promise<unknown> {
+    return this.request("POST", `${GQL_URL}/${encodeURIComponent(operationName)}`, {
+      body: JSON.stringify({ operationName, variables }),
     });
-    return this.request("GET", `/api/consumer/v2/search/restaurants?${qs}`);
   }
 
   /**
-   * Availability for a single venue / date / party size. The slug-style id is
-   * Tock's primary key; numeric IDs are also accepted by the endpoint.
+   * Search — TODO: capture real operation name + variable shape from a
+   * live page interaction. Likely candidates from Tock's frontend:
+   * `SearchBusinesses`, `Autocomplete`, `SearchRestaurants`. Today this
+   * throws ProviderError with the Cloudflare body so callers see why.
    */
-  async getAvailability(params: {
-    venueId: string;
-    date: string; // YYYY-MM-DD
-    partySize: number;
-  }): Promise<unknown> {
-    // venueId lives in the path; only date + size go in the query string.
-    const qs = new URLSearchParams({
-      date: params.date,
-      size: String(params.partySize),
-    });
-    return this.request(
-      "GET",
-      `/api/consumer/v2/business/${encodeURIComponent(params.venueId)}/availability?${qs}`,
+  async searchRestaurants(_params: { query: string; limit?: number }): Promise<unknown> {
+    throw new ProviderError(
+      "tock_search_unverified: real GraphQL operation name not yet captured. " +
+        "Browser fallback pending. Direct API access is Cloudflare-blocked.",
+      "tock",
     );
   }
 
   /**
-   * Restaurant detail by slug.
+   * Availability — TODO: capture real operation name. Likely candidates:
+   * `BusinessAvailability`, `GetExperienceAvailability`, `SearchAvailability`.
+   */
+  async getAvailability(_params: {
+    venueId: string;
+    date: string;
+    partySize: number;
+  }): Promise<unknown> {
+    throw new ProviderError(
+      "tock_availability_unverified: real GraphQL operation name not yet captured. " +
+        "Browser fallback pending. Direct API access is Cloudflare-blocked.",
+      "tock",
+    );
+  }
+
+  /**
+   * Restaurant detail — the `/<slug>` page renders this from a known GQL
+   * op; we can extract the operation name from a page probe but it's not
+   * critical until search lands.
    */
   async getRestaurant(slug: string): Promise<unknown> {
     return this.request(
       "GET",
-      `/api/consumer/v2/business/${encodeURIComponent(slug)}`,
+      `${BASE_URL}/api/consumer/business/${encodeURIComponent(slug)}`,
     );
   }
 
-  /** Logged-in user's upcoming reservations. */
+  /** Logged-in user's reservations. Requires session cookies. */
   async listReservations(): Promise<unknown> {
-    return this.request("GET", `/api/consumer/v2/me/reservations`);
+    return this.gql("CurrentBookerReservations", {});
   }
 
-  /** Cancel by purchase id. Compound id from book result. */
+  /** Cancel by purchase id. Requires session cookies. */
   async cancelReservation(purchaseId: string): Promise<unknown> {
-    return this.request(
-      "POST",
-      `/api/consumer/v2/purchase/${encodeURIComponent(purchaseId)}/cancel`,
-      { body: "{}" },
-    );
+    return this.gql("CancelReservation", { purchaseId });
   }
 
   private async request(
     method: "GET" | "POST",
-    path: string,
+    fullUrl: string,
     init: { headers?: Record<string, string>; body?: string } = {},
   ): Promise<unknown> {
-    const url = path.startsWith("http") ? path : `${BASE_URL}${path}`;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
-      const res = await this.fetchImpl(url, {
+      const res = await this.fetchImpl(fullUrl, {
         method,
         ...(init.body !== undefined ? { body: init.body } : {}),
         headers: buildHeaders(this.creds, {
@@ -153,25 +179,25 @@ export class TockClient {
       });
       const text = await res.text();
       if (res.status === 404) {
-        throw new NotFoundError(`Tock ${method} ${path} → 404: ${text.slice(0, 300)}`);
+        throw new NotFoundError(`Tock ${method} ${fullUrl} → 404: ${text.slice(0, 300)}`);
       }
       if (res.status === 429) {
         const retryAfter = res.headers.get("retry-after");
         throw new RateLimitError(
-          `Tock ${method} ${path} → 429`,
+          `Tock ${method} ${fullUrl} → 429`,
           retryAfter ? Number(retryAfter) : undefined,
         );
       }
       if (!res.ok) {
         throw new ProviderError(
-          `Tock ${method} ${path} → ${res.status}: ${text.slice(0, 500)}`,
+          `Tock ${method} ${fullUrl} → ${res.status}: ${text.slice(0, 500)}`,
           "tock",
         );
       }
       try {
         return text ? JSON.parse(text) : null;
       } catch {
-        throw new ProviderError(`Tock ${method} ${path}: non-JSON body`, "tock");
+        throw new ProviderError(`Tock ${method} ${fullUrl}: non-JSON body`, "tock");
       }
     } finally {
       clearTimeout(timer);

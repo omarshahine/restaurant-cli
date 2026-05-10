@@ -158,25 +158,28 @@ Env-var floors (override flags):
 |---|---|---|---|---|---|---|---|
 | Resy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | OpenTable | ✓ | ✓ | — | — | — | — | ✓ |
-| Tock | ✓ | ✓ | — (gated) | ✓ | ✓ | — | — |
+| Tock | scaffolded | scaffolded | — | scaffolded | scaffolded | — | — |
 
-### Tock specifics
+### Tock specifics — current state
 
-Tock has no public consumer API. Anonymous reads (`search`, `availability`) work via the same approach used for OpenTable — direct GraphQL/REST to `exploretock.com/api/consumer/v2/...` with browser-realistic headers. Cloudflare may 403 some IPs; the `RESTAURANT_CLI_TOCK_MODE=browser` fallback is reserved for a future patchright path.
+Tock has no public consumer API. Live probing (2026-05-10) verified the real surface is `https://www.exploretock.com/api/graphql/<OperationName>` (GraphQL, not REST). Cloudflare blocks every `/api/*` call from raw fetch (`undici` and `curl` both 403). Two paths can work; neither is fully wired:
 
-Authenticated calls (`list`, `cancel`) require importing your logged-in Chrome session cookies:
+1. **Imported session cookies** via `restaurant auth login tock --from-file <chrome-cookies>` (file-based; macOS Keychain intentionally avoided). The CLI persists `TOCK_SESSION_COOKIES` to `~/.secrets.env` and the client wires it into the `Cookie` header. The remaining gap is the real GraphQL operation names and variable shapes — Tock's reservations release on the 15th of each month, so the availability XHR didn't fire during the probe to capture its op name.
+2. **Patchright browser fallback** (`src/providers/tock/browser.ts`). Launch config verified: patchright + persistent profile + `channel: "chrome"` + ~5s mouse warmup passes Cloudflare reliably for both pages and GraphQL XHRs. Search/availability XHR-capture pipelines are TODO.
+
+Until one of those lands, `restaurant search --provider tock` and `restaurant availability --provider tock` return a typed error envelope in `--agent`/`--json` mode (`ok: false`, `failures: [...]`) so agents can branch correctly. Capabilities flags are honest — `false` for everything that doesn't work yet.
 
 ```bash
-# 1) In Chrome: open exploretock.com (must be signed in), DevTools → Application → Cookies → exploretock.com → "Copy as JSON"
-# 2) Save the JSON to a file (e.g. ~/tock-cookies.json)
-restaurant auth login tock --from-file ~/tock-cookies.json
-# Writes TOCK_SESSION_COOKIES to ~/.secrets.env
-restaurant list --provider tock --upcoming
+# What works today: the auth pipeline scaffolding
+restaurant auth status --agent
+restaurant auth login tock --from-file ~/tock-cookies.txt   # writes TOCK_SESSION_COOKIES
+
+# Wired but not yet usable end-to-end; will surface typed errors
+restaurant search "sushi suzuki" --provider tock --agent
+restaurant list --provider tock --agent
 ```
 
-`restaurant auth status` shows which providers have cookies stored vs. loaded.
-
-Tock `book` is **default-off**. Live booking requires driving a real Chrome session for Braintree CSRF + payment confirmation, which isn't implemented yet. Two safety floors when it does land: `RESTAURANT_CLI_TOCK_ALLOW_BOOK=1` env var + `--yes`/`--agent` for non-interactive runs.
+Tock `book` is **default-off** behind `RESTAURANT_CLI_TOCK_ALLOW_BOOK=1` AND not built. Live booking requires driving a real Chrome session for Braintree CSRF + payment confirmation. That work follows the search/availability browser-path work.
 
 ### OpenTable specifics
 
