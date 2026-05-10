@@ -2,6 +2,8 @@
 
 Pluggable CLI for booking restaurant reservations across Resy, OpenTable, Tock, and SevenRooms. Every provider is an independent module that plugs into the same interface; the CLI, OpenClaw plugin, and Claude Code plugin all read from the provider registry, not from any one provider.
 
+**Agent-friendly.** Every command supports `--agent` (= `--json --compact --no-color --no-input --yes`), `--select` for field projection, `--csv` for table output, `--dry-run` for preview, and typed exit codes. `restaurant agent-context` emits a structured JSON manifest of every command, flag, provider, and exit code for autonomous callers.
+
 ## Install
 
 ```bash
@@ -69,9 +71,69 @@ restaurant availability --venue 8033 --date 2026-05-15 --party 2 --provider open
 # OpenTable hand-off (no API booking; deep link → user confirms in browser)
 restaurant book --venue 1046758 --date 2026-05-15 --time 19:00 --party 2 \
                 --provider opentable
+
+# multi-provider — search every registered provider and merge
+restaurant search "alinea"
+
+# soonest open slot per venue across all providers
+restaurant earliest alinea,le-bernardin,smyth --within 14d --party 2
+
+# Tock authenticated reads — import cookies from your logged-in Chrome session
+# 1) open exploretock.com → DevTools → Application → Cookies, copy as JSON, save to ~/tock-cookies.json
+# 2) restaurant auth login tock --from-file ~/tock-cookies.json
+restaurant list --provider tock
+
+# agent self-discovery
+restaurant agent-context | jq '.commands[].name'
 ```
 
-All destructive commands (`book`, `cancel`, `jobs cancel`, `snipe`) prompt for y/N confirmation. Pass `--yes` to skip — useful for scripts and the snipe fire-time self-invocation.
+All destructive commands (`book`, `cancel`, `jobs cancel`, `snipe`) prompt for y/N confirmation. Pass `--yes` to skip — useful for scripts and the snipe fire-time self-invocation. Pass `--agent` for the full agent default set.
+
+## Agent mode
+
+Every command honors a consolidated agent flag set:
+
+| Flag | Effect |
+|---|---|
+| `--agent` | All of the below: `--json --compact --no-color --no-input --yes` |
+| `--json` | JSON output |
+| `--csv` | CSV output (table/array results) |
+| `--compact` | Drop verbose fields from rows; keep id, name, status, time, date, etc. |
+| `--select id,name,time` | Project named fields (dotted paths) from the JSON result |
+| `--no-color` | Disable ANSI colors |
+| `--no-input` | Fail closed instead of prompting (paired with `--yes` for destructive commands) |
+| `--yes` | Skip y/N confirmation prompts |
+| `--dry-run` | Build and print the request envelope without firing |
+
+Env-var floors (override flags):
+
+| Var | Effect |
+|---|---|
+| `RESTAURANT_CLI_AGENT=1` | Every command behaves as if `--agent` were passed |
+| `RESTAURANT_CLI_DRY_RUN=1` | Every destructive command runs as `--dry-run` |
+| `RESTAURANT_CLI_OT_MODE=api\|browser\|auto` | OpenTable transport selector |
+| `RESTAURANT_CLI_TOCK_MODE=api\|browser\|auto` | Tock transport selector |
+| `RESTAURANT_CLI_TOCK_ALLOW_BOOK=1` | Required to ever fire a real Tock book (default-off safety floor) |
+
+`book` also supports `--idempotent` — pre-flights `list` for an existing matching `(venue, date, time, party)` reservation and returns it instead of double-booking on retry. Used automatically by the snipe fire-time wrapper.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | success |
+| 2 | usage error (bad flags, missing required arg) |
+| 3 | not found (venue, reservation, slot, slug) |
+| 5 | api error (provider 5xx, malformed response, capability miss) |
+| 6 | auth error (missing/invalid credentials) |
+| 7 | rate limited (HTTP 429) |
+| 10 | config error (bad/missing config file) |
+
+`restaurant doctor --fail-on stale|error` returns non-zero when the corresponding health level is reached — useful for CI.
+
+## Self-describing manifest
+
+`restaurant agent-context` emits a single JSON document describing every command, subcommand, flag (including type, default, required), every registered provider's capabilities, every documented env-var floor, and the exit-code table. An agent can run this once and learn the entire surface without scanning `--help` for each subcommand.
 
 ## Commands
 
@@ -96,6 +158,25 @@ All destructive commands (`book`, `cancel`, `jobs cancel`, `snipe`) prompt for y
 |---|---|---|---|---|---|---|---|
 | Resy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | OpenTable | ✓ | ✓ | — | — | — | — | ✓ |
+| Tock | ✓ | ✓ | — (gated) | ✓ | ✓ | — | — |
+
+### Tock specifics
+
+Tock has no public consumer API. Anonymous reads (`search`, `availability`) work via the same approach used for OpenTable — direct GraphQL/REST to `exploretock.com/api/consumer/v2/...` with browser-realistic headers. Cloudflare may 403 some IPs; the `RESTAURANT_CLI_TOCK_MODE=browser` fallback is reserved for a future patchright path.
+
+Authenticated calls (`list`, `cancel`) require importing your logged-in Chrome session cookies:
+
+```bash
+# 1) In Chrome: open exploretock.com (must be signed in), DevTools → Application → Cookies → exploretock.com → "Copy as JSON"
+# 2) Save the JSON to a file (e.g. ~/tock-cookies.json)
+restaurant auth login tock --from-file ~/tock-cookies.json
+# Writes TOCK_SESSION_COOKIES to ~/.secrets.env
+restaurant list --provider tock --upcoming
+```
+
+`restaurant auth status` shows which providers have cookies stored vs. loaded.
+
+Tock `book` is **default-off**. Live booking requires driving a real Chrome session for Braintree CSRF + payment confirmation, which isn't implemented yet. Two safety floors when it does land: `RESTAURANT_CLI_TOCK_ALLOW_BOOK=1` env var + `--yes`/`--agent` for non-interactive runs.
 
 ### OpenTable specifics
 

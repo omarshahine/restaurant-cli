@@ -4,6 +4,7 @@ import { loadConfig } from "../../core/config.js";
 import { CapabilityError } from "../../core/errors.js";
 import { credentialsFor } from "../credentials.js";
 import { confirmTTY } from "../prompts.js";
+import { AGENT_ARGS, emit, emitError, parseAgentArgs } from "../output.js";
 
 export const cancelCommand = defineCommand({
   meta: {
@@ -13,10 +14,10 @@ export const cancelCommand = defineCommand({
   args: {
     id: { type: "positional", description: "Reservation id (resy_token)", required: true },
     provider: { type: "string", description: "Provider id", default: "" },
-    yes: { type: "boolean", description: "Skip confirmation prompt", default: false },
-    json: { type: "boolean", description: "Output raw JSON result" },
+    ...AGENT_ARGS,
   },
   async run({ args }) {
+    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
     const config = loadConfig();
     const registry = buildRegistry();
     const providerId = args.provider || config.defaults.provider;
@@ -27,29 +28,40 @@ export const cancelCommand = defineCommand({
 
     const creds = credentialsFor(providerId, config, provider);
 
-    if (!args.yes) {
-      const ok = await confirmTTY(`Cancel ${providerId} reservation ${args.id}?`);
+    if (agentArgs.dryRun) {
+      const envelope = {
+        ok: true,
+        dryRun: true,
+        provider: providerId,
+        request: { reservationId: args.id },
+      };
+      emit(envelope, agentArgs, {
+        human: () => `DRY RUN — would cancel ${providerId} reservation ${args.id}`,
+      });
+      return;
+    }
+
+    if (!agentArgs.yes) {
+      const ok = await confirmTTY(`Cancel ${providerId} reservation ${args.id}?`, {
+        noInput: agentArgs.noInput,
+      });
       if (!ok) {
-        // eslint-disable-next-line no-console
-        console.log("Aborted. Reservation not cancelled.");
+        process.stdout.write("Aborted. Reservation not cancelled.\n");
         return;
       }
     }
 
     const result = await provider.cancel(args.id, creds);
 
-    if (args.json) {
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
     if (!result.ok) {
-      // eslint-disable-next-line no-console
-      console.error(`Cancel failed: ${result.error ?? "unknown error"}`);
-      process.exitCode = 4;
+      emitError(`Cancel failed: ${result.error ?? "unknown error"}`, agentArgs, {
+        code: "provider",
+        exitCode: 5,
+      });
       return;
     }
-    // eslint-disable-next-line no-console
-    console.log(`Cancelled reservation ${args.id}.`);
+    emit(result, agentArgs, {
+      human: () => `Cancelled reservation ${args.id}.`,
+    });
   },
 });

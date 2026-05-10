@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
 import { lookupRestaurantId } from "../../providers/opentable/api.js";
+import { AGENT_ARGS, emit, parseAgentArgs } from "../output.js";
 
 /**
  * Resolve an OpenTable URL slug to its numeric restaurant ID.
@@ -19,21 +20,19 @@ export const lookupCommand = defineCommand({
   args: {
     slug: {
       type: "string",
-      description:
-        "URL slug from opentable.com/r/<slug>, e.g. 'carbone-new-york'",
+      description: "URL slug from opentable.com/r/<slug>, e.g. 'carbone-new-york'",
       required: true,
     },
-    json: { type: "boolean", description: "Output raw JSON" },
+    ...AGENT_ARGS,
   },
   async run({ args }) {
+    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
     const result = await lookupRestaurantId(args.slug);
-    if (args.json) {
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
-    const name = result.name ? ` — ${result.name}` : "";
-    // eslint-disable-next-line no-console
-    console.log(`${result.restaurantId}  (${result.slug})${name}`);
+    emit(result, agentArgs, {
+      human: () => {
+        const name = result.name ? ` — ${result.name}` : "";
+        return `${result.restaurantId}  (${result.slug})${name}`;
+      },
+    });
   },
 });

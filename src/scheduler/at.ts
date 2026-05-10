@@ -199,7 +199,10 @@ export class AtScheduler implements Scheduler {
       "RESY_API_KEY",
       "RESY_AUTH_TOKEN",
       "OPENTABLE_AUTH_TOKEN",
+      "OPENTABLE_SESSION_COOKIES",
       "TOCK_AUTH_TOKEN",
+      "TOCK_SESSION_COOKIES",
+      "TOCK_CVC",
       "SEVENROOMS_AUTH_TOKEN",
     ];
     // Anchor each key in a regex alternation. We use `eval` on the matched
