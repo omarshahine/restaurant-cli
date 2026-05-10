@@ -10,13 +10,13 @@
 import { createRegistry, type ProviderRegistry } from "./registry.js";
 import * as resy from "./resy/index.js";
 import * as opentable from "./opentable/index.js";
-// import * as tock from "./tock/index.js";           // later
+import * as tock from "./tock/index.js";
 // import * as sevenrooms from "./sevenrooms/index.js"; // later
 
 export function registerAll(registry: ProviderRegistry): void {
   resy.register(registry);
   opentable.register(registry);
-  // tock.register(registry);
+  tock.register(registry);
   // sevenrooms.register(registry);
 }
 

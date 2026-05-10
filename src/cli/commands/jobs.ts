@@ -2,34 +2,29 @@ import { defineCommand } from "citty";
 import { existsSync, readFileSync } from "node:fs";
 import { createAtScheduler } from "../../scheduler/at.js";
 import { confirmTTY } from "../prompts.js";
+import { AGENT_ARGS, emit, emitError, parseAgentArgs } from "../output.js";
 
 const listCmd = defineCommand({
   meta: { name: "list", description: "List all scheduled snipe jobs" },
-  args: {
-    json: { type: "boolean", description: "Output raw JSON" },
-  },
+  args: { ...AGENT_ARGS },
   async run({ args }) {
+    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
     const sched = createAtScheduler();
     const jobs = await sched.list();
-    if (args.json) {
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(jobs, null, 2));
-      return;
-    }
-    if (jobs.length === 0) {
-      // eslint-disable-next-line no-console
-      console.log("No scheduled jobs.");
-      return;
-    }
-    for (const j of jobs) {
-      const atJobId = j.metadata?.atJobId ?? "?";
-      // eslint-disable-next-line no-console
-      console.log(
-        `${j.id}  provider=${j.providerId}  at-job=${atJobId}  runAt=${j.runAt.toISOString()}`,
-      );
-      // eslint-disable-next-line no-console
-      console.log(`  ${j.command}`);
-    }
+    emit(jobs, agentArgs, {
+      empty: "No scheduled jobs.",
+      human: (xs) => {
+        const lines: string[] = [];
+        for (const j of xs) {
+          const atJobId = j.metadata?.atJobId ?? "?";
+          lines.push(
+            `${j.id}  provider=${j.providerId}  at-job=${atJobId}  runAt=${j.runAt.toISOString()}`,
+          );
+          lines.push(`  ${j.command}`);
+        }
+        return lines;
+      },
+    });
   },
 });
 
@@ -37,26 +32,38 @@ const cancelCmd = defineCommand({
   meta: { name: "cancel", description: "Cancel a scheduled snipe by job id" },
   args: {
     id: { type: "positional", description: "Job id", required: true },
-    yes: { type: "boolean", description: "Skip confirmation prompt", default: false },
+    ...AGENT_ARGS,
   },
   async run({ args }) {
+    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
     const sched = createAtScheduler();
-    if (!args.yes) {
-      const ok = await confirmTTY(`Cancel scheduled job ${args.id}?`);
+    if (agentArgs.dryRun) {
+      emit(
+        { ok: true, dryRun: true, request: { jobId: args.id } },
+        agentArgs,
+        { human: () => `DRY RUN — would cancel job ${args.id}` },
+      );
+      return;
+    }
+    if (!agentArgs.yes) {
+      const ok = await confirmTTY(`Cancel scheduled job ${args.id}?`, {
+        noInput: agentArgs.noInput,
+      });
       if (!ok) {
-        // eslint-disable-next-line no-console
-        console.log("Aborted. Job not cancelled.");
+        process.stdout.write("Aborted. Job not cancelled.\n");
         return;
       }
     }
     const ok = await sched.cancel(args.id);
     if (ok) {
-      // eslint-disable-next-line no-console
-      console.log(`Cancelled ${args.id}.`);
+      emit({ ok: true, jobId: args.id }, agentArgs, {
+        human: () => `Cancelled ${args.id}.`,
+      });
     } else {
-      // eslint-disable-next-line no-console
-      console.error(`No job with id "${args.id}".`);
-      process.exitCode = 4;
+      emitError(`No job with id "${args.id}".`, agentArgs, {
+        code: "not_found",
+        exitCode: 3,
+      });
     }
   },
 });
@@ -68,25 +75,44 @@ const logsCmd = defineCommand({
   },
   args: {
     id: { type: "positional", description: "Job id", required: true },
+    ...AGENT_ARGS,
   },
   async run({ args }) {
+    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
     const sched = createAtScheduler();
     const path = sched.logFilePath(args.id);
     if (!existsSync(path)) {
-      // eslint-disable-next-line no-console
-      console.error(
+      emitError(
         `No log file for "${args.id}" yet. (Does the id exist? Try: restaurant jobs list)`,
+        agentArgs,
+        { code: "not_found", exitCode: 3 },
       );
-      process.exitCode = 4;
       return;
     }
     const content = readFileSync(path, "utf8");
-    if (content.length === 0) {
-      // eslint-disable-next-line no-console
-      console.log(`(${path} exists but is empty — job probably hasn't fired yet)`);
+    if (agentArgs.json) {
+      // Logs are JSONL; for --json mode parse each line and emit an array.
+      const lines = content
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const parsed: unknown[] = [];
+      for (const line of lines) {
+        try {
+          parsed.push(JSON.parse(line));
+        } catch {
+          parsed.push({ raw: line });
+        }
+      }
+      emit(parsed, agentArgs);
       return;
     }
-    // eslint-disable-next-line no-console
+    if (content.length === 0) {
+      process.stdout.write(
+        `(${path} exists but is empty — job probably hasn't fired yet)\n`,
+      );
+      return;
+    }
     process.stdout.write(content);
   },
 });

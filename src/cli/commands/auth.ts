@@ -1,0 +1,202 @@
+/**
+ * `restaurant auth login --chrome <provider>` — import session cookies from
+ * the local Chrome profile and persist them as `<PROVIDER>_SESSION_COOKIES`
+ * in ~/.secrets.env.
+ *
+ * Why Chrome? Tock's checkout flow uses Auth0 + Braintree CSRF bound to a
+ * real browser session; partner API keys don't exist. The path of least
+ * resistance is to reuse the user's already-logged-in Chrome session.
+ *
+ * Cookie value encoding: stored as a single URL-encoded string of `name=value`
+ * pairs separated by `; `, ready to drop into a `Cookie:` HTTP header.
+ *
+ * Limitations:
+ *   - Reading Chrome's encrypted cookie DB requires the OS keychain on macOS
+ *     (Chrome Safe Storage), which Omar's setup intentionally avoids (no
+ *     macOS Keychain rule). Instead we use a `--from-file` path where the
+ *     user dumps cookies via Chrome DevTools → Application → Cookies →
+ *     "copy as JSON" and pipes that file in. Documented in the README.
+ *   - For Tock and OpenTable only — Resy uses email/password → token
+ *     exchange and doesn't need this path.
+ */
+
+import { defineCommand } from "citty";
+import { readFileSync } from "node:fs";
+import {
+  appendSecret,
+  secretKeyPresent,
+  secretsFilePath,
+} from "../../core/secrets.js";
+import { AGENT_ARGS, emit, emitError, parseAgentArgs } from "../output.js";
+import { UsageError } from "../../core/errors.js";
+
+const KNOWN_PROVIDERS = new Set(["opentable", "tock"]);
+
+/**
+ * Accept the DevTools "Copy as cURL" cookies blob or the "Copy" cookie-table
+ * JSON. Returns a normalized `name=value; ...` cookie string suitable for
+ * the HTTP Cookie header.
+ *
+ * Supported shapes:
+ *   1. Plain string: `name1=value1; name2=value2; ...` — passed through.
+ *   2. JSON array: `[{name, value}, ...]` — common DevTools paste shape.
+ *   3. JSON object: `{cookies: [{name, value}, ...]}` — Playwright's export shape.
+ */
+export function normalizeCookieBlob(input: string, providerHost?: string): string {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+    return trimmed.replace(/\n/g, " ");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new UsageError(
+      `Cookie input looks like JSON but failed to parse. Expected a cookie string or DevTools JSON.`,
+    );
+  }
+  const arr = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray((parsed as { cookies?: unknown[] }).cookies)
+      ? (parsed as { cookies: unknown[] }).cookies
+      : null;
+  if (!arr) {
+    throw new UsageError("Cookie JSON must be an array of {name, value} or {cookies: [...]}.");
+  }
+  const pairs: string[] = [];
+  for (const entry of arr) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as { name?: string; value?: string; domain?: string };
+    if (!e.name || e.value === undefined) continue;
+    if (providerHost && e.domain && !e.domain.includes(providerHost)) continue;
+    pairs.push(`${e.name}=${e.value}`);
+  }
+  return pairs.join("; ");
+}
+
+function envVarFor(providerId: string): string {
+  return `${providerId.toUpperCase()}_SESSION_COOKIES`;
+}
+
+const loginCmd = defineCommand({
+  meta: {
+    name: "login",
+    description:
+      "Import session cookies into ~/.secrets.env (currently file-based; see --from-file)",
+  },
+  args: {
+    provider: {
+      type: "positional",
+      description: "Provider id (opentable | tock)",
+      required: true,
+    },
+    chrome: {
+      type: "boolean",
+      description:
+        "(reserved) Direct Chrome cookie-DB import. Currently unsupported on macOS without keychain; use --from-file.",
+      default: false,
+    },
+    "from-file": {
+      type: "string",
+      description:
+        "Path to a file containing the cookie blob (DevTools JSON or `name=value; ...` string)",
+      default: "",
+    },
+    ...AGENT_ARGS,
+  },
+  run({ args }) {
+    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
+    const providerId = String(args.provider).toLowerCase();
+    if (!KNOWN_PROVIDERS.has(providerId)) {
+      throw new UsageError(
+        `auth login is only supported for: ${[...KNOWN_PROVIDERS].join(", ")}. ` +
+          `For Resy, use \`restaurant setup resy\`.`,
+      );
+    }
+
+    const file = String(args["from-file"] ?? "");
+    if (args.chrome && !file) {
+      emitError(
+        `Direct Chrome cookie-DB read is not supported on macOS without the keychain. ` +
+          `Open Chrome DevTools → Application → Cookies → ${providerId === "tock" ? "exploretock.com" : "opentable.com"}, ` +
+          `copy as JSON, save to a file, and run with --from-file <path>.`,
+        agentArgs,
+        { code: "usage", exitCode: 2 },
+      );
+      return;
+    }
+    if (!file) {
+      throw new UsageError(`Pass --from-file <path> with a Chrome-exported cookie blob.`);
+    }
+
+    let raw: string;
+    try {
+      raw = readFileSync(file, "utf8");
+    } catch (e) {
+      throw new UsageError(`Could not read cookie file: ${(e as Error).message}`);
+    }
+
+    const host = providerId === "tock" ? "exploretock.com" : "opentable.com";
+    const cookieHeader = normalizeCookieBlob(raw, host);
+    if (!cookieHeader) {
+      throw new UsageError(
+        `No usable cookies found for ${host} in ${file}. ` +
+          `Make sure the export contains rows for that domain.`,
+      );
+    }
+
+    const envVar = envVarFor(providerId);
+    if (secretKeyPresent(envVar)) {
+      const result = {
+        ok: true,
+        envVar,
+        secretsFile: secretsFilePath(),
+        status: "already_present",
+        message: `${envVar} already present in ${secretsFilePath()}. Edit manually to rotate.`,
+      };
+      emit(result, agentArgs, { human: () => result.message });
+      return;
+    }
+    appendSecret(envVar, cookieHeader);
+    const result = {
+      ok: true,
+      envVar,
+      secretsFile: secretsFilePath(),
+      status: "written",
+      message: `Wrote ${envVar} to ${secretsFilePath()}. Run 'source ~/.secrets.env && restaurant doctor' to verify.`,
+    };
+    emit(result, agentArgs, { human: () => result.message });
+  },
+});
+
+const statusCmd = defineCommand({
+  meta: { name: "status", description: "Show which providers have stored session cookies" },
+  args: { ...AGENT_ARGS },
+  run({ args }) {
+    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
+    const rows = [...KNOWN_PROVIDERS].map((id) => ({
+      provider: id,
+      envVar: envVarFor(id),
+      loaded: Boolean(process.env[envVarFor(id)]),
+      present: secretKeyPresent(envVarFor(id)),
+    }));
+    emit(rows, agentArgs, {
+      human: (xs) =>
+        xs.map(
+          (r) =>
+            `${r.provider}: ${r.present ? "stored" : "missing"}${r.loaded ? " + loaded" : r.present ? " (source ~/.secrets.env)" : ""}`,
+        ),
+    });
+  },
+});
+
+export const authCommand = defineCommand({
+  meta: {
+    name: "auth",
+    description: "Manage browser-session cookies for OpenTable and Tock",
+  },
+  subCommands: {
+    login: loginCmd,
+    status: statusCmd,
+  },
+});

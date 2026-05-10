@@ -5,7 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.16] — 2026-05-10
+
 ### Added
+- **Agent mode** (`--agent`) rolls up `--json --compact --no-color --no-input --yes` into one flag. Honored by every command. Env floors `RESTAURANT_CLI_AGENT=1` and `RESTAURANT_CLI_DRY_RUN=1` override flags.
+- Shared output emitter (`src/cli/output.ts`) — single `emit()` centralizing JSON/CSV/compact/select rendering. Replaces 11 hand-rolled `console.log`/`JSON.stringify` blocks across commands.
+- `--csv` output mode for table/array results.
+- `--select id,name,time` field projection with dotted-path support.
+- `--dry-run` on `book`/`cancel`/`snipe` — prints the would-fire envelope without calling the provider.
+- `--idempotent` on `book` — pre-flights `listReservations()` and returns an existing live match instead of double-booking. Filters out cancelled/expired/refunded/no-show statuses (snipe fire-time path now passes `--idempotent` automatically). 6 dedicated tests for the live-status filter.
+- `restaurant agent-context` — self-describing JSON manifest of every command, flag, provider capability, env-var floor, and exit code. Lets agents learn the surface in one call.
+- `restaurant auth login tock --from-file <chrome-cookies>` — file-based Chrome cookie import (macOS Keychain intentionally avoided). Persists `TOCK_SESSION_COOKIES` to `~/.secrets.env`. Accepts plain `Cookie:` strings or DevTools-JSON exports.
+- `restaurant auth status` — shows which providers have session cookies stored vs. loaded.
+- `restaurant earliest <venue,venue,...> --within 14d` — cross-network soonest-slot scan. Per-venue parallel walk forward day-by-day across every availability-capable provider; one row per venue.
+- Multi-provider `search` fan-out: by default searches every provider with `capabilities.search` and merges/ranks results. `--provider <id>` scopes to one (legacy behavior).
+- Formalized exit code table: 0 (success), 2 (usage), 3 (not_found), 5 (api), 6 (auth), 7 (rate_limited), 10 (config). New error classes: `NotFoundError`, `RateLimitError`, `UsageError`. Tock client maps HTTP 404→3 and 429→7 explicitly.
+- `restaurant doctor --fail-on stale|error` for CI gating.
+- Tock provider scaffold (`src/providers/tock/`) — full module layout (provider, client, auth, search, availability, list, cancel, book, schemas, env, browser, index) ready for live wiring. Capabilities currently honest-false; see "Tock specifics" in README.
+- Single-source-of-truth version constant in `src/core/version.ts` reading from `package.json` at runtime — replaces three independent `VERSION` constants previously duplicated in `version.ts`, `doctor.ts`, and `agent-context.ts`.
+- Scheduler at-job env allowlist extended for `TOCK_SESSION_COOKIES`, `TOCK_CVC`, `OPENTABLE_SESSION_COOKIES`.
+- 28+ new tests covering output emitter, agent flag parsing, Tock parsers, earliest scanner, cookie blob normalization, book live-status filter, version single-source.
+
+### Changed
+- `search` and `earliest` now emit an envelope `{ ok, results, failures }` in `--json`/`--csv` mode so agent callers can distinguish empty-results from blocked-by-Cloudflare. Previously per-provider failures were visible only in human mode.
+- Tock client documents the verified-real surface (`/api/graphql/<OperationName>` GraphQL, not the `/api/consumer/v2/...` REST shape originally guessed). Search/availability/list/cancel currently throw typed `tock_*_unverified` errors pending real GraphQL operation names + a working transport (cookies or browser).
+- Patchright browser launch config for Tock (`src/providers/tock/browser.ts`) verified live: persistent profile + `channel: "chrome"` + headed + 5s mouse jitter passes Cloudflare for both pages and `/api/graphql/*` XHRs. Search/availability XHR-capture pipelines TODO.
+
+### Fixed
+- `--compact` projection no longer over-strips single-object envelopes; only row-shaped (array) data is projected. Single `book` results and `version` envelopes keep their full shape.
+
+### Earlier Unreleased entries (carried forward)
 - SecretRef resolver now supports `source: "file"` + `provider: "secrets"`, reading `~/.openclaw/secrets.json` and following `id` as an RFC 6901 JSON pointer. This is the idiomatic OpenClaw shared-secrets-store pattern (used by travel-hub, easypost, etc.) — lets one copy of a token live in the central secrets file rather than inline in each plugin's config. Previously the resolver understood `env` and filesystem-path `file` only; the shared-store shape silently returned `undefined`, causing 401s on booking calls. 7 new tests covering the shape, JSON-pointer escapes, missing-file / missing-pointer / non-string-value fallbacks.
 - OpenTable provider (`src/providers/opentable/`): search + availability via reverse-engineered `/dapi/` endpoints (no credentials needed). No public OpenTable API exists; this uses the same endpoints opentable.com's React app calls.
 - `bookUrl` capability on `ProviderCapabilities` — honest degradation for providers that can generate a deep link but not complete the booking themselves.
