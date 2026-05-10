@@ -112,11 +112,20 @@ export const earliestCommand = defineCommand({
      * For a single (provider, venue) pair, walk forward day by day until we
      * find a slot or exhaust the window. Stops on first slot to avoid
      * hammering the provider beyond what `earliest` needs.
+     *
+     * Per-day errors are silently retried (most are transient or "no slots
+     * today"); the LAST error is preserved so the caller can report
+     * "venue X / provider Y failed because Z" when every day errored.
      */
-    async function scanOne(providerId: string, venueId: string): Promise<EarliestRow | null> {
+    async function scanOne(
+      providerId: string,
+      venueId: string,
+    ): Promise<{ row: EarliestRow | null; lastError?: string }> {
       const provider = registry.tryGet(providerId);
-      if (!provider || !provider.capabilities.availability) return null;
+      if (!provider || !provider.capabilities.availability) return { row: null };
       const creds = credentialsFor(providerId, config, provider);
+      let lastError: string | undefined;
+      let anySuccess = false;
       for (let i = 0; i < days; i++) {
         const date = addDays(start, i);
         try {
@@ -124,25 +133,26 @@ export const earliestCommand = defineCommand({
             { venueId, date, partySize },
             creds,
           );
+          anySuccess = true;
           if (slots.length > 0) {
-            // Pick the earliest time on the earliest day.
             const sorted = [...slots].sort((a, b) => a.time.localeCompare(b.time));
             const first = sorted[0]!;
             return {
-              venue: venueId,
-              provider: providerId,
-              date,
-              time: first.time,
-              token: first.token,
-              ...(first.type ? { type: first.type } : {}),
+              row: {
+                venue: venueId,
+                provider: providerId,
+                date,
+                time: first.time,
+                token: first.token,
+                ...(first.type ? { type: first.type } : {}),
+              },
             };
           }
-        } catch {
-          // Per-day errors are fine; just try the next day. The whole-venue
-          // failure mode is "no slots found in window".
+        } catch (e) {
+          lastError = (e as Error).message;
         }
       }
-      return null;
+      return anySuccess ? { row: null } : { row: null, ...(lastError ? { lastError } : {}) };
     }
 
     const workItems: { providerId: string; venueId: string }[] = [];
@@ -156,37 +166,57 @@ export const earliestCommand = defineCommand({
       }
     }
 
-    const results = await Promise.all(
-      workItems.map((w) => scanOne(w.providerId, w.venueId).catch(() => null)),
+    const settled = await Promise.all(
+      workItems.map((w) =>
+        scanOne(w.providerId, w.venueId).catch((e: unknown) => ({
+          row: null,
+          lastError: (e as Error).message,
+        })),
+      ),
     );
 
     // Group by venueId, pick the earliest hit per venue across providers.
     const byVenue = new Map<string, EarliestRow>();
-    for (const r of results) {
-      if (!r) continue;
-      const key = r.venue;
-      const cur = byVenue.get(key);
-      if (!cur) {
-        byVenue.set(key, r);
-        continue;
+    const failures: { provider: string; venue: string; error: string }[] = [];
+    settled.forEach((s, i) => {
+      const w = workItems[i]!;
+      if (s.row) {
+        const key = s.row.venue;
+        const cur = byVenue.get(key);
+        if (!cur || s.row.date < cur.date || (s.row.date === cur.date && s.row.time < cur.time)) {
+          byVenue.set(key, s.row);
+        }
+      } else if (s.lastError) {
+        failures.push({ provider: w.providerId, venue: w.venueId, error: s.lastError });
       }
-      // Earlier date wins; if same date, earlier time wins.
-      if (r.date < cur.date || (r.date === cur.date && r.time < cur.time)) {
-        byVenue.set(key, r);
-      }
-    }
+    });
 
     const rows = [...byVenue.values()].sort((a, b) =>
       a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date),
     );
 
+    if (agentArgs.json || agentArgs.csv) {
+      const envelope = {
+        ok: failures.length === 0,
+        results: rows,
+        failures,
+      };
+      emit(envelope, agentArgs);
+      return;
+    }
+
     emit(rows, agentArgs, {
       empty: "No availability found within the window.",
-      human: (xs) =>
-        xs.map(
+      human: (xs) => {
+        const lines = xs.map(
           (r) =>
             `${r.date} ${r.time}  ${r.venue}  [${r.provider}]${r.type ? `  (${r.type})` : ""}  token=${r.token}`,
-        ),
+        );
+        for (const f of failures) {
+          lines.push(`# ${f.provider}:${f.venue}: ${f.error}`);
+        }
+        return lines;
+      },
     });
   },
 });

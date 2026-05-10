@@ -89,6 +89,21 @@ export const searchCommand = defineCommand({
       return ap - bp;
     });
 
+    // In --json/--csv mode, surface per-provider failures alongside the
+    // hits so agents can distinguish "no results" from "provider blocked".
+    // Previously the failures array was visible only in human mode, which
+    // turned a Cloudflare 403 into a silent empty result for agents.
+    if (agentArgs.json || agentArgs.csv) {
+      const envelope = {
+        ok: failures.length === 0,
+        query: args.query,
+        results: merged,
+        failures,
+      };
+      emit(envelope, agentArgs);
+      return;
+    }
+
     emit(merged, agentArgs, {
       empty: `No venues found for "${args.query}".`,
       human: (venues) => {
