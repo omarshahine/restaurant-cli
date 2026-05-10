@@ -1,11 +1,35 @@
 import { defineCommand } from "citty";
 import { buildRegistry } from "../../providers/bootstrap.js";
 import { loadConfig } from "../../core/config.js";
-import { CapabilityError, NotFoundError } from "../../core/errors.js";
+import { CapabilityError } from "../../core/errors.js";
 import { credentialsFor } from "../credentials.js";
 import { confirmTTY } from "../prompts.js";
 import { AGENT_ARGS, emit, emitError, parseAgentArgs } from "../output.js";
-import type { BookResult } from "../../providers/types.js";
+import type { BookResult, Reservation } from "../../providers/types.js";
+
+/**
+ * Reservation statuses we treat as "dead" — a match against one of these
+ * during idempotency check is NOT a duplicate booking and should be ignored.
+ * Includes Resy's "cancelled" and the generic "canceled" spelling, plus
+ * "expired"/"refunded" which some providers emit for past or refunded
+ * reservations. Comparison is case-insensitive.
+ */
+const DEAD_RESERVATION_STATUSES = new Set([
+  "cancelled",
+  "canceled",
+  "expired",
+  "refunded",
+  "noshow",
+  "no-show",
+  "no_show",
+  "void",
+  "voided",
+]);
+
+function isLive(r: Reservation): boolean {
+  if (!r.status) return true; // No status field → assume live.
+  return !DEAD_RESERVATION_STATUSES.has(r.status.toLowerCase().replace(/\s+/g, ""));
+}
 
 export const bookCommand = defineCommand({
   meta: {
@@ -54,12 +78,16 @@ export const bookCommand = defineCommand({
       ...(args.notes ? { notes: args.notes } : {}),
     };
 
-    // Idempotency: scan existing reservations first.
+    // Idempotency: scan existing LIVE reservations only. A cancelled/expired
+    // reservation at the same (venue, date, time, party) coordinates is not a
+    // duplicate — the user genuinely wants to re-book. This matters most for
+    // the snipe fire-time path, which auto-passes --idempotent.
     if (args.idempotent && provider.capabilities.list) {
       try {
         const existing = await provider.listReservations(creds);
         const match = existing.find(
           (r) =>
+            isLive(r) &&
             r.venueId === args.venue &&
             r.date === args.date &&
             r.time === args.time &&
@@ -116,7 +144,7 @@ export const bookCommand = defineCommand({
       const code = /no slot|not found|404/i.test(result.error ?? "") ? "not_found" : "provider";
       emitError(`Booking failed: ${result.error ?? "unknown error"}`, agentArgs, {
         code,
-        exitCode: code === "not_found" ? new NotFoundError("x").exitCode : 5,
+        exitCode: code === "not_found" ? 3 : 5,
       });
       return;
     }

@@ -6,6 +6,7 @@ import { createAtScheduler } from "../../scheduler/at.js";
 import type { Credentials } from "../../providers/types.js";
 import { AGENT_ARGS, emit, parseAgentArgs } from "../output.js";
 import { UsageError } from "../../core/errors.js";
+import { VERSION } from "../../core/version.js";
 
 interface ProviderHealth {
   id: string;
@@ -25,8 +26,6 @@ interface DoctorReport {
   /** Overall health bucket: ok / stale / error. */
   health: "ok" | "stale" | "error";
 }
-
-const VERSION = "0.1.15";
 
 export const doctorCommand = defineCommand({
   meta: {

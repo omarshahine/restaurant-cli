@@ -1,7 +1,6 @@
 import { defineCommand } from "citty";
 import { AGENT_ARGS, emit, parseAgentArgs } from "../output.js";
-
-const VERSION = "0.1.15";
+import { VERSION } from "../../core/version.js";
 
 export const versionCommand = defineCommand({
   meta: { name: "version", description: "Print the CLI version" },

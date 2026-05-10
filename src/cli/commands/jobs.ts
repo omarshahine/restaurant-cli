@@ -2,7 +2,6 @@ import { defineCommand } from "citty";
 import { existsSync, readFileSync } from "node:fs";
 import { createAtScheduler } from "../../scheduler/at.js";
 import { confirmTTY } from "../prompts.js";
-import { NotFoundError } from "../../core/errors.js";
 import { AGENT_ARGS, emit, emitError, parseAgentArgs } from "../output.js";
 
 const listCmd = defineCommand({
@@ -63,7 +62,7 @@ const cancelCmd = defineCommand({
     } else {
       emitError(`No job with id "${args.id}".`, agentArgs, {
         code: "not_found",
-        exitCode: new NotFoundError("x").exitCode,
+        exitCode: 3,
       });
     }
   },
@@ -86,7 +85,7 @@ const logsCmd = defineCommand({
       emitError(
         `No log file for "${args.id}" yet. (Does the id exist? Try: restaurant jobs list)`,
         agentArgs,
-        { code: "not_found", exitCode: new NotFoundError("x").exitCode },
+        { code: "not_found", exitCode: 3 },
       );
       return;
     }

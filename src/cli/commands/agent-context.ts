@@ -11,6 +11,7 @@ import { defineCommand } from "citty";
 import type { ArgsDef, CommandDef } from "citty";
 import { AGENT_ARGS, emit, parseAgentArgs } from "../output.js";
 import { buildRegistry } from "../../providers/bootstrap.js";
+import { VERSION } from "../../core/version.js";
 
 interface FlagSpec {
   name: string;
@@ -53,8 +54,6 @@ interface ManifestSpec {
   envFloors: { name: string; effect: string }[];
 }
 
-const VERSION = "0.1.15";
-
 const READ_ONLY = new Set([
   "search",
   "availability",
@@ -66,8 +65,15 @@ const READ_ONLY = new Set([
   "jobs",
   "agent-context",
   "earliest",
+  "status", // auth status — pure read
 ]);
-const DESTRUCTIVE = new Set(["book", "cancel", "snipe"]);
+const DESTRUCTIVE = new Set([
+  "book",
+  "cancel",
+  "snipe",
+  "login", // auth login — writes ~/.secrets.env
+  "setup", // setup — writes credentials
+]);
 
 function isReadOnly(name: string): boolean {
   return READ_ONLY.has(name);

@@ -98,8 +98,8 @@ export class TockClient {
     date: string; // YYYY-MM-DD
     partySize: number;
   }): Promise<unknown> {
+    // venueId lives in the path; only date + size go in the query string.
     const qs = new URLSearchParams({
-      businessSlug: params.venueId,
       date: params.date,
       size: String(params.partySize),
     });
