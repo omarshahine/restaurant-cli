@@ -2,11 +2,12 @@ import { defineCommand } from "citty";
 import { randomUUID } from "node:crypto";
 import { buildRegistry } from "../../providers/bootstrap.js";
 import { loadConfig } from "../../core/config.js";
-import { CapabilityError } from "../../core/errors.js";
+import { CapabilityError, UsageError } from "../../core/errors.js";
 import { parseReleaseAt } from "../../core/time.js";
 import { resolveCliBinary, shellQuote } from "../../core/shell.js";
 import { createAtScheduler } from "../../scheduler/at.js";
 import { confirmTTY } from "../prompts.js";
+import { AGENT_ARGS, emit, parseAgentArgs } from "../output.js";
 
 export const snipeCommand = defineCommand({
   meta: {
@@ -26,9 +27,10 @@ export const snipeCommand = defineCommand({
     },
     provider: { type: "string", description: "Provider id", default: "" },
     notes: { type: "string", description: "Optional notes to send to the venue", default: "" },
-    yes: { type: "boolean", description: "Skip confirmation prompt", default: false },
+    ...AGENT_ARGS,
   },
   async run({ args }) {
+    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
     const config = loadConfig();
     const registry = buildRegistry();
     const providerId = args.provider || config.defaults.provider;
@@ -39,19 +41,39 @@ export const snipeCommand = defineCommand({
 
     const runAt = parseReleaseAt(args["release-at"]);
     if (runAt.getTime() <= Date.now()) {
-      throw new Error(
+      throw new UsageError(
         `--release-at must be in the future. Got ${runAt.toISOString()} which is already past.`,
       );
     }
 
-    if (!args.yes) {
+    if (agentArgs.dryRun) {
+      const envelope = {
+        ok: true,
+        dryRun: true,
+        provider: providerId,
+        request: {
+          venueId: args.venue,
+          date: args.date,
+          time: args.time,
+          partySize: Number(args.party),
+          runAt: runAt.toISOString(),
+        },
+      };
+      emit(envelope, agentArgs, {
+        human: () =>
+          `DRY RUN — would queue ${providerId} snipe for venue ${args.venue} on ${args.date} at ${args.time} (party of ${args.party}), firing at ${runAt.toISOString()}`,
+      });
+      return;
+    }
+
+    if (!agentArgs.yes) {
       const ok = await confirmTTY(
         `Queue ${providerId} snipe for venue ${args.venue} on ${args.date} at ${args.time} ` +
           `(party of ${args.party}), firing at ${runAt.toISOString()}?`,
+        { noInput: agentArgs.noInput },
       );
       if (!ok) {
-        // eslint-disable-next-line no-console
-        console.log("Aborted. No job was queued.");
+        process.stdout.write("Aborted. No job was queued.\n");
         return;
       }
     }
@@ -75,6 +97,7 @@ export const snipeCommand = defineCommand({
       shellQuote(providerId),
       "--yes",
       "--json",
+      "--idempotent",
     ];
     if (args.notes) {
       parts.push("--notes", shellQuote(args.notes));
@@ -98,12 +121,18 @@ export const snipeCommand = defineCommand({
     });
 
     const atJobId = (await sched.list()).find((j) => j.id === jobId)?.metadata?.atJobId;
-    // eslint-disable-next-line no-console
-    console.log(
-      `Queued snipe ${jobId} (at-job ${atJobId ?? "?"}) to fire at ${runAt.toISOString()}.`,
-    );
-    // eslint-disable-next-line no-console
-    console.log(`Logs: ${sched.logFilePath(jobId)}`);
+    const result = {
+      ok: true,
+      jobId,
+      atJobId: atJobId ?? null,
+      runAt: runAt.toISOString(),
+      logFile: sched.logFilePath(jobId),
+    };
+    emit(result, agentArgs, {
+      human: () => [
+        `Queued snipe ${jobId} (at-job ${atJobId ?? "?"}) to fire at ${runAt.toISOString()}.`,
+        `Logs: ${sched.logFilePath(jobId)}`,
+      ],
+    });
   },
 });
-
