@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.18] — 2026-05-11
+
+### Fixed
+- **Resy search HTTP 400 on `--city`** (#29): Resy's
+  `/3/venuesearch/search` gateway tightened input validation and now rejects
+  the `location` body field with `{"message":"Invalid data received.",
+  "data":{"location":["Unknown field."]}}`. The field is dropped from the
+  request; city filtering is applied client-side against each hit's
+  `location.code` (which Resy still returns), matching the working Go-port
+  behavior the issue cites.
+
 ## [0.1.17] — 2026-05-11
 
 ### Added

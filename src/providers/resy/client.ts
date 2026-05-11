@@ -49,12 +49,10 @@ export class ResyClient {
    * Venue search.
    * see resy-cli: internal/resy/search.go (public venue search endpoint)
    */
-  async searchVenues(params: { query: string; city?: string; limit?: number }): Promise<unknown> {
+  async searchVenues(params: { query: string; limit?: number }): Promise<unknown> {
     const body = {
       query: params.query,
       per_page: params.limit ?? 20,
-      // `location` is a cluster slug like "ny", "la"; omitted if not provided
-      ...(params.city ? { location: params.city } : {}),
       types: ["venue"],
     };
     return this.request("POST", "/3/venuesearch/search", {
