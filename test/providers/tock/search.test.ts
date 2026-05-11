@@ -1,52 +1,34 @@
 import { describe, it, expect } from "vitest";
-import { parseTockSearchResponse } from "../../../src/providers/tock/search.js";
+import { trgRestaurantToVenue } from "../../../src/providers/tock/search.js";
+import type { TrgRestaurant } from "../../../src/providers/tock/trg.js";
 
-describe("parseTockSearchResponse", () => {
-  it("parses { results: [...] } shape", () => {
-    const raw = {
-      results: [
-        {
-          businessSlug: "alinea",
-          name: "Alinea",
-          city: { name: "Chicago" },
-          region: { name: "IL" },
-          cuisines: ["Modern American"],
-        },
-      ],
+describe("tock/search.trgRestaurantToVenue", () => {
+  it("projects trg restaurants into Venue shape", () => {
+    const r: TrgRestaurant = {
+      id: "4891",
+      slug: "canlis",
+      name: "Canlis",
+      network: "tock",
+      metro: "Seattle",
+      cuisine: "Fine Dining",
+      url: "https://www.exploretock.com/canlis",
+      latitude: 47.6437,
+      longitude: -122.3478,
+      match_score: 0.95,
     };
-    expect(parseTockSearchResponse(raw)).toEqual([
-      {
-        id: "alinea",
-        name: "Alinea",
-        city: "Chicago",
-        region: "IL",
-        cuisine: "Modern American",
-        raw: raw.results[0],
-      },
-    ]);
+    expect(trgRestaurantToVenue(r)).toEqual({
+      id: "canlis",
+      name: "Canlis",
+      city: "Seattle",
+      cuisine: "Fine Dining",
+      url: "https://www.exploretock.com/canlis",
+      raw: r,
+    });
   });
 
-  it("falls back to { restaurants: [...] } shape", () => {
-    const raw = { restaurants: [{ businessSlug: "atomix", name: "Atomix" }] };
-    expect(parseTockSearchResponse(raw)).toEqual([
-      { id: "atomix", name: "Atomix", raw: raw.restaurants[0] },
-    ]);
-  });
-
-  it("skips entries missing id or name", () => {
-    const raw = {
-      results: [
-        { businessSlug: "atomix" }, // no name
-        { name: "No-id" }, // no id
-        { businessSlug: "smyth", name: "Smyth" }, // ok
-      ],
-    };
-    expect(parseTockSearchResponse(raw)).toHaveLength(1);
-  });
-
-  it("returns [] for empty/unknown shapes", () => {
-    expect(parseTockSearchResponse(null)).toEqual([]);
-    expect(parseTockSearchResponse({})).toEqual([]);
-    expect(parseTockSearchResponse({ results: [] })).toEqual([]);
+  it("omits empty/optional fields", () => {
+    const r: TrgRestaurant = { id: "1", slug: "x", name: "X", network: "tock" };
+    const v = trgRestaurantToVenue(r);
+    expect(v).toEqual({ id: "x", name: "X", raw: r });
   });
 });

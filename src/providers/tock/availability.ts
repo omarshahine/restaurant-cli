@@ -1,68 +1,42 @@
 import type { AvailabilityQuery, Credentials, Slot } from "../types.js";
-import { TockClient } from "./client.js";
-import { tockCredentials } from "./auth.js";
-
-interface TockAvailabilitySlot {
-  experienceId?: string | number;
-  experienceName?: string;
-  time?: string; // ISO local "YYYY-MM-DDTHH:mm" or HH:mm in some shapes
-  start?: string;
-  size?: number;
-  /** Tock's opaque slot token, threaded into book. */
-  token?: string;
-  attributes?: string[];
-}
-
-interface TockAvailabilityResponse {
-  slots?: TockAvailabilitySlot[];
-  experiences?: { id?: string | number; name?: string; slots?: TockAvailabilitySlot[] }[];
-}
+import { trgAvailabilityCheck, type TrgAvailabilityResult } from "./trg.js";
 
 /**
- * Pull `HH:mm` out of a Tock time string. Tock sometimes uses ISO local time
- * like `2026-05-15T19:00`; other shapes are bare `19:00`.
+ * Parse trg's `bookable_times` (ISO local "YYYY-MM-DDTHH:MM") into our
+ * provider-agnostic Slot shape. Exposed for unit tests.
+ *
+ * Token shape: `<date>|<HH:MM>|tock:<slug>`. Tock's book flow is gated by
+ * URL-encoded params (slug + date + time + size), not an opaque slot token
+ * like Resy's `config.token`, so we synthesize a deterministic composite
+ * that callers can hand back to a future book implementation.
  */
-export function parseTockTime(s: string): string {
-  const m = /(\d{2}):(\d{2})/.exec(s);
-  return m ? `${m[1]}:${m[2]}` : s;
-}
-
-/**
- * Pure parser. Returns Slot[] preserving Tock's opaque token and attributes.
- * Test fixtures use this directly.
- */
-export function parseAvailabilityResponse(raw: unknown): Slot[] {
-  const r = (raw ?? {}) as TockAvailabilityResponse;
-  const slots: Slot[] = [];
-  const eat = (s: TockAvailabilitySlot, expName?: string): void => {
-    const t = s.start ?? s.time;
-    if (!t) return;
-    const token = s.token ?? String(s.experienceId ?? "");
-    if (!token) return;
-    slots.push({
-      token,
-      time: parseTockTime(t),
-      ...(s.experienceId !== undefined ? { configId: String(s.experienceId) } : {}),
-      ...(expName ?? s.experienceName ? { type: (expName ?? s.experienceName)! } : {}),
-      raw: s,
+export function bookableTimesToSlots(
+  result: TrgAvailabilityResult,
+  date: string,
+  venueSlug: string,
+): Slot[] {
+  if (!result.available || !result.bookable_times) return [];
+  const out: Slot[] = [];
+  for (const iso of result.bookable_times) {
+    const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(iso);
+    if (!m) continue;
+    const slotDate = m[1]!;
+    const time = `${m[2]}:${m[3]}`;
+    if (slotDate !== date) continue; // multi-day envelopes can leak adjacent dates
+    out.push({
+      token: `${slotDate}|${time}|tock:${venueSlug}`,
+      time,
+      raw: { iso, slug: venueSlug },
     });
-  };
-  for (const s of r.slots ?? []) eat(s);
-  for (const exp of r.experiences ?? []) {
-    for (const s of exp.slots ?? []) eat(s, exp.name);
   }
-  return slots;
+  out.sort((a, b) => a.time.localeCompare(b.time));
+  return out;
 }
 
 export async function getAvailability(
   q: AvailabilityQuery,
-  creds: Credentials,
+  _creds: Credentials,
 ): Promise<Slot[]> {
-  const client = new TockClient(tockCredentials(creds));
-  const raw = await client.getAvailability({
-    venueId: q.venueId,
-    date: q.date,
-    partySize: q.partySize,
-  });
-  return parseAvailabilityResponse(raw);
+  const result = await trgAvailabilityCheck(q.venueId, q.date, q.partySize);
+  return bookableTimesToSlots(result, q.date, q.venueId);
 }

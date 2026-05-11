@@ -175,8 +175,8 @@ export function buildManifest(commandTree: Record<string, CommandDef>): Manifest
         effect: "OpenTable transport: api|browser|auto (default auto)",
       },
       {
-        name: "RESTAURANT_CLI_TOCK_MODE",
-        effect: "Tock transport: api|browser|auto (default auto)",
+        name: "RESTAURANT_CLI_TRG_BIN",
+        effect: "Override path to the table-reservation-goat-pp-cli binary (defaults to ~/go/bin/...)",
       },
       {
         name: "RESTAURANT_CLI_TOCK_ALLOW_BOOK",
