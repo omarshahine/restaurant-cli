@@ -7,43 +7,35 @@ import { cancel } from "./cancel.js";
 import { listReservations } from "./list.js";
 
 /**
- * Tock provider — SCAFFOLDED, not yet wired for live data.
+ * Tock provider — shells out to `table-reservation-goat-pp-cli` (the trg
+ * Go binary from mvanhorn/printing-press-library, Apache-2.0) for the two
+ * operations that need a Chrome TLS fingerprint + Tock's page-issued
+ * session token: search + availability.
  *
- * Live probing (2026-05-10) verified that Cloudflare blocks every
- * `/api/*` call from undici/curl. Two paths can work; neither is built:
+ * Why shell out instead of a native port: Tock anonymous reads require
+ * (a) a Chrome TLS fingerprint to clear Cloudflare and (b) the
+ * page-minted `x-tock-session` token that's not in any SSR-extractable
+ * state. Go's `enetx/surf` handles (a); the trg binary's session-warmup
+ * handles (b). Node lacks first-class equivalents that don't drag in
+ * 25MB+ native binaries; reusing trg was the pragmatic call.
  *
- *   1. Imported session cookies via `restaurant auth login tock`. Read
- *      operations would succeed if the cookies are valid and the GraphQL
- *      operation names + variable shapes are correct. We don't have those
- *      yet (Tock's reservations release on the 15th of each month, so we
- *      couldn't capture the availability XHR during the probe).
+ * Install path:
+ *   npx -y @mvanhorn/printing-press install table-reservation-goat
+ *   # adds ~/go/bin/table-reservation-goat-pp-cli
  *
- *   2. Patchright browser fallback (`src/providers/tock/browser.ts`).
- *      Launch config verified; search/availability scrapers TODO.
- *
- * Until one of those lands, every Tock read errors out with a typed
- * "tock_*_unverified" message so callers (especially agents in --json
- * mode) see exactly why nothing came back. The capabilities below match
- * reality: only `bookUrl` is honest, and even that's not implemented yet.
- *
- * What DOES work today:
- *   - `restaurant auth login tock --from-file <chrome-cookies>` writes
- *     TOCK_SESSION_COOKIES to ~/.secrets.env; the client wires it into
- *     the Cookie header when present.
- *   - `restaurant auth status` shows which providers have cookies stored.
- *   - The scheduler allowlist (src/scheduler/at.ts) includes
- *     TOCK_SESSION_COOKIES + TOCK_CVC for the eventual snipe flow.
+ * Capabilities not yet wired (capability flags = false):
+ *   - list / cancel — require imported session cookies + verified GraphQL.
+ *     Cookie import lives at `restaurant auth login tock --from-file`.
+ *   - book — Tock book is form-submit page navigation (NOT XHR), needs a
+ *     chromedp-style pattern + CVC prompt. Trg itself defers this too.
  */
 export const tockProvider: Provider = {
   id: "tock",
   displayName: "Tock",
   capabilities: {
-    // false: see "TODO" notes in client.ts — real operation names not yet
-    // captured. The methods throw a typed error so callers know why.
-    search: false,
-    availability: false,
+    search: true,
+    availability: true,
     book: false,
-    // Requires session cookies + verified GraphQL op name. Not wired yet.
     cancel: false,
     list: false,
     snipe: false,

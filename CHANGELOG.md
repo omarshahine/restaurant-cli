@@ -5,6 +5,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.17] — 2026-05-11
+
+### Added
+- **Tock live search + availability** via shell-out to the
+  [`table-reservation-goat-pp-cli`](https://github.com/mvanhorn/printing-press-library)
+  Go binary (Apache-2.0). Tock anonymous reads need both a Chrome TLS
+  fingerprint (Cloudflare) and a page-issued `x-tock-session` token, neither
+  of which has a clean pure-Node path. The trg binary handles both; we wrap
+  it. Install with: `npx -y @mvanhorn/printing-press install table-reservation-goat`
+  (writes `~/go/bin/table-reservation-goat-pp-cli`). Override path via
+  `RESTAURANT_CLI_TRG_BIN`.
+- `src/providers/tock/trg.ts`: typed wrapper around
+  `restaurants list --network tock --query`, `availability check`, and
+  `availability multi-day`. Maps exit code 3 (not_found) and 0/nonzero
+  surfaces to typed errors.
+- `restaurant doctor` validates Tock by checking the binary is on disk; helpful
+  install hint when missing.
+
+### Changed
+- Tock capabilities flipped to honest-true for `search` and `availability`;
+  `book`, `cancel`, `list` remain false (book stays gated behind
+  `RESTAURANT_CLI_TOCK_ALLOW_BOOK=1` AND not built; list/cancel still need
+  session-cookie wiring). Cookie import path
+  `restaurant auth login tock --from-file` unchanged.
+- Removed `RESTAURANT_CLI_TOCK_MODE` env var (replaced by the binary's own
+  data-source flags). Added `RESTAURANT_CLI_TRG_BIN` to the
+  `agent-context` env-floor list.
+
+### Removed
+- Stub Tock client/transport/protobuf/SSR/bootstrap modules from 0.1.16.
+  They were a partial native port that hit Cloudflare + session-token walls
+  and never went live; the trg shell-out replaces them. The architectural
+  notes survive in this CHANGELOG entry + provider.ts comments for the
+  future native-port attempt.
+
 ## [0.1.16] — 2026-05-10
 
 ### Added

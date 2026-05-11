@@ -158,28 +158,27 @@ Env-var floors (override flags):
 |---|---|---|---|---|---|---|---|
 | Resy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | OpenTable | ✓ | ✓ | — | — | — | — | ✓ |
-| Tock | scaffolded | scaffolded | — | scaffolded | scaffolded | — | — |
+| Tock | ✓ | ✓ | — | — | — | — | — |
 
-### Tock specifics — current state
+### Tock specifics
 
-Tock has no public consumer API. Live probing (2026-05-10) verified the real surface is `https://www.exploretock.com/api/graphql/<OperationName>` (GraphQL, not REST). Cloudflare blocks every `/api/*` call from raw fetch (`undici` and `curl` both 403). Two paths can work; neither is fully wired:
-
-1. **Imported session cookies** via `restaurant auth login tock --from-file <chrome-cookies>` (file-based; macOS Keychain intentionally avoided). The CLI persists `TOCK_SESSION_COOKIES` to `~/.secrets.env` and the client wires it into the `Cookie` header. The remaining gap is the real GraphQL operation names and variable shapes — Tock's reservations release on the 15th of each month, so the availability XHR didn't fire during the probe to capture its op name.
-2. **Patchright browser fallback** (`src/providers/tock/browser.ts`). Launch config verified: patchright + persistent profile + `channel: "chrome"` + ~5s mouse warmup passes Cloudflare reliably for both pages and GraphQL XHRs. Search/availability XHR-capture pipelines are TODO.
-
-Until one of those lands, `restaurant search --provider tock` and `restaurant availability --provider tock` return a typed error envelope in `--agent`/`--json` mode (`ok: false`, `failures: [...]`) so agents can branch correctly. Capabilities flags are honest — `false` for everything that doesn't work yet.
+Tock anonymous reads (`search`, `availability`) shell out to [`table-reservation-goat-pp-cli`](https://github.com/mvanhorn/printing-press-library) — a Go binary by Matt Van Horn / Pejman Pour-Moezzi (Apache-2.0) that handles two things Node can't do cleanly: (1) Chrome TLS fingerprint impersonation to clear Cloudflare, and (2) sourcing the page-issued `x-tock-session` token Tock's React bundle mints client-side. Install it once:
 
 ```bash
-# What works today: the auth pipeline scaffolding
-restaurant auth status --agent
-restaurant auth login tock --from-file ~/tock-cookies.txt   # writes TOCK_SESSION_COOKIES
-
-# Wired but not yet usable end-to-end; will surface typed errors
-restaurant search "sushi suzuki" --provider tock --agent
-restaurant list --provider tock --agent
+npx -y @mvanhorn/printing-press install table-reservation-goat
+# writes ~/go/bin/table-reservation-goat-pp-cli
 ```
 
-Tock `book` is **default-off** behind `RESTAURANT_CLI_TOCK_ALLOW_BOOK=1` AND not built. Live booking requires driving a real Chrome session for Braintree CSRF + payment confirmation. That work follows the search/availability browser-path work.
+Add `~/go/bin` to your PATH or set `RESTAURANT_CLI_TRG_BIN` to the binary path. Then:
+
+```bash
+restaurant search "canlis" --provider tock --agent
+restaurant availability --venue canlis --date 2026-05-12 --party 2 --provider tock --agent
+```
+
+`restaurant doctor` checks the binary is on disk and surfaces an install hint when missing.
+
+**What's not wired:** `list`, `cancel`, `book`. Tock's authenticated calls require imported session cookies (path scaffolded via `restaurant auth login tock --from-file <path>`); the calls themselves aren't built yet. Tock `book` is form-submit page navigation (not XHR) and needs a chromedp-style flow with CVC prompting — upstream trg defers this too. The capability flags are honest-false for these.
 
 ### OpenTable specifics
 
