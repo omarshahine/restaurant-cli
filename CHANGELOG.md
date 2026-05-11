@@ -14,7 +14,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   "data":{"location":["Unknown field."]}}`. The field is dropped from the
   request; city filtering is applied client-side against each hit's
   `location.code` (which Resy still returns), matching the working Go-port
-  behavior the issue cites.
+  behavior the issue cites. When a city filter is active, the upstream
+  `per_page` is over-fetched to 50 so the caller's `--limit` is honored
+  after the client-side filter rather than capped before it.
 
 ## [0.1.17] — 2026-05-11
 

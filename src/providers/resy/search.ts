@@ -26,6 +26,15 @@ interface ResySearchResponse {
 }
 
 /**
+ * Maximum upstream `per_page` to request when a city filter is active.
+ * Resy's gateway no longer accepts the `location` body field, so city
+ * matching happens client-side after the response — we over-fetch a fixed
+ * pool to leave headroom for the filter to discard non-matching cities
+ * before trimming down to the caller's requested limit.
+ */
+const CITY_FILTER_OVERFETCH = 50;
+
+/**
  * Search venues by free-text query.
  *
  * Resy's `/3/venuesearch/search` no longer accepts a `location` field on the
@@ -34,12 +43,17 @@ interface ResySearchResponse {
  */
 export async function searchVenues(q: VenueQuery, creds: Credentials): Promise<Venue[]> {
   const client = new ResyClient(resyCredentials(creds));
+  const requestedLimit = q.limit ?? 20;
+  const cityFilter = q.city?.toLowerCase();
+  const upstreamLimit = cityFilter
+    ? Math.max(requestedLimit, CITY_FILTER_OVERFETCH)
+    : requestedLimit;
+
   const raw = (await client.searchVenues({
     query: q.query,
-    limit: q.limit ?? 20,
+    limit: upstreamLimit,
   })) as ResySearchResponse;
 
-  const cityFilter = q.city?.toLowerCase();
   const hits = (raw?.search?.hits ?? raw?.hits ?? []).filter((h) =>
     cityFilter ? (h.location?.code ?? h.city)?.toLowerCase() === cityFilter : true,
   );
@@ -61,5 +75,6 @@ export async function searchVenues(q: VenueQuery, creds: Credentials): Promise<V
         raw: h,
       };
     })
-    .filter((v): v is Venue => v !== null);
+    .filter((v): v is Venue => v !== null)
+    .slice(0, requestedLimit);
 }
