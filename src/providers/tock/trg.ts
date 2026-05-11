@@ -61,10 +61,24 @@ export interface TrgSearchEnvelope {
   sources_queried: string[];
 }
 
-/** Resolved path to the binary, or null when nothing is installed. */
+/**
+ * Resolved path to the binary, or null when nothing is installed.
+ *
+ * `RESTAURANT_CLI_TRG_BIN` overrides auto-detection. When the override is
+ * set but the file doesn't exist, we throw immediately — silently falling
+ * back to "install missing" sends the user to a needless npx install when
+ * the real cause is a typo or stale path.
+ */
 export function resolveTrgBinary(): string | null {
   const override = process.env["RESTAURANT_CLI_TRG_BIN"];
-  if (override) return existsSync(override) ? override : null;
+  if (override) {
+    if (existsSync(override)) return override;
+    throw new ProviderError(
+      `RESTAURANT_CLI_TRG_BIN is set to "${override}" but no file exists there. ` +
+        "Fix the path or unset the variable to use auto-detection.",
+      "tock",
+    );
+  }
   const candidates = [
     join(homedir(), "go", "bin", "table-reservation-goat-pp-cli"),
     join(homedir(), ".local", "bin", "table-reservation-goat-pp-cli"),

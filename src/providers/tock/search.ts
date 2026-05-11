@@ -8,6 +8,7 @@
  */
 
 import type { Credentials, Venue, VenueQuery } from "../types.js";
+import { ProviderError } from "../../core/errors.js";
 import { trgRestaurantsList, type TrgRestaurant } from "./trg.js";
 
 export function trgRestaurantToVenue(r: TrgRestaurant): Venue {
@@ -26,5 +27,11 @@ export async function searchVenues(
   _creds: Credentials,
 ): Promise<Venue[]> {
   const env = await trgRestaurantsList(q.query, q.limit ?? 20);
+  if (!Array.isArray(env.results)) {
+    throw new ProviderError(
+      "trg restaurants list: unexpected response shape (results missing)",
+      "tock",
+    );
+  }
   return env.results.map(trgRestaurantToVenue);
 }

@@ -1,5 +1,4 @@
 import type { CancelResult, Credentials } from "../types.js";
-import { AuthError } from "../../core/errors.js";
 import { tockCredentials } from "./auth.js";
 
 /**
