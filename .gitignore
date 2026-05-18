@@ -12,3 +12,6 @@ coverage/
 .pnpm-store/
 .idea/
 .vscode/
+
+# Clawpatch local review state
+.clawpatch/
