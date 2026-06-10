@@ -2,11 +2,6 @@
   "id": "restaurant-cli",
   "name": "Restaurant",
   "description": "Pluggable reservation booking via Resy and OpenTable (Tock and SevenRooms are stubbed for future support)",
-  "requires": {
-    "binaries": ["restaurant"],
-    "browser": true,
-    "externalServices": ["resy.com", "opentable.com"]
-  },
   "skills": [
     "skills/restaurant"
   ],
