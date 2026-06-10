@@ -1,2 +1,8 @@
+allowBuilds:
+  '@google/genai': true
+  esbuild: true
+  openclaw: true
+  protobufjs: true
+  tree-sitter-bash: true
 minimumReleaseAgeExclude:
   - openclaw@2026.6.5
