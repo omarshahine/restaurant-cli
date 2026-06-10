@@ -77,15 +77,21 @@
       "./dist/src/integrations/openclaw/adapter.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.3.23"
+      "pluginApi": ">=2026.6.5"
     },
     "build": {
-      "openclawVersion": "2026.5.2"
+      "openclawVersion": "2026.6.5",
+      "pluginSdkVersion": "2026.6.5"
     },
     "environment": {
-      "binaries": ["restaurant"],
+      "binaries": [
+        "restaurant"
+      ],
       "requiresBrowser": true,
-      "externalServices": ["resy.com", "opentable.com"]
+      "externalServices": [
+        "resy.com",
+        "opentable.com"
+      ]
     }
   },
   "scripts": {
@@ -96,8 +102,9 @@
     "test:watch": "vitest",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "prepare": "test -d dist || npm run build",
-    "prepublishOnly": "npm run build && npm run typecheck && npm run test"
+    "prepublishOnly": "npm run build && npm run typecheck && npm run test",
+    "prepack": "npm run build",
+    "prepare": "test -d dist || npm run build"
   },
   "dependencies": {
     "@inquirer/password": "^5.0.11",
@@ -120,7 +127,7 @@
     "vitest": "^2.1.8"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.23",
+    "openclaw": ">=2026.6.5",
     "playwright": ">=1.48.0"
   },
   "peerDependenciesMeta": {
