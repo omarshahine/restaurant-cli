@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveSecret } from "../../src/core/secrets.js";
+import { resolveSecret, setOpenClawSecret, readOpenClawSecret } from "../../src/core/secrets.js";
 
 describe("core/secrets resolveSecret", () => {
   let tmpHome: string;
@@ -149,6 +149,32 @@ describe("core/secrets resolveSecret", () => {
       expect(
         resolveSecret({ source: "file", provider: "secrets", id: "" }),
       ).toBeUndefined();
+    });
+
+    it("round-trips: setOpenClawSecret writes a value resolveSecret can read", () => {
+      // This is the exact contract the OpenClaw mirror relies on — it writes
+      // via setOpenClawSecret and the plugin reads via resolveSecret(ref).
+      const pointer = "/restaurant-cli/resy_authToken";
+      expect(setOpenClawSecret(pointer, "tok_roundtrip")).toBe(true); // new
+      expect(readOpenClawSecret(pointer)).toBe("tok_roundtrip");
+      expect(
+        resolveSecret({ source: "file", provider: "secrets", id: pointer }),
+      ).toBe("tok_roundtrip");
+      // Re-writing the same value reports no change; a new value rotates it.
+      expect(setOpenClawSecret(pointer, "tok_roundtrip")).toBe(false);
+      expect(setOpenClawSecret(pointer, "tok_rotated")).toBe(true);
+      expect(
+        resolveSecret({ source: "file", provider: "secrets", id: pointer }),
+      ).toBe("tok_rotated");
+    });
+
+    it("setOpenClawSecret preserves other keys in the store", () => {
+      setOpenClawSecret("/restaurant-cli/resy_authToken", "a");
+      setOpenClawSecret("/restaurant-cli/opentable_sessionCookies", "b");
+      setOpenClawSecret("/other-plugin/key", "c");
+      expect(readOpenClawSecret("/restaurant-cli/resy_authToken")).toBe("a");
+      expect(readOpenClawSecret("/restaurant-cli/opentable_sessionCookies")).toBe("b");
+      expect(readOpenClawSecret("/other-plugin/key")).toBe("c");
     });
   });
 

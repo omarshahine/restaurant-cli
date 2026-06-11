@@ -25,6 +25,13 @@
                   "file"
                 ]
               },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "secrets"
+                ],
+                "description": "Secret backend. Only \"secrets\" (~/.openclaw/secrets.json) is supported."
+              },
               "id": {
                 "type": "string"
               }
@@ -52,6 +59,13 @@
                   "env",
                   "file"
                 ]
+              },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "secrets"
+                ],
+                "description": "Secret backend. Only \"secrets\" (~/.openclaw/secrets.json) is supported."
               },
               "id": {
                 "type": "string"

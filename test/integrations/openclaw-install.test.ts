@@ -44,6 +44,17 @@ describe("integrations/openclaw/install", () => {
     return JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
   }
 
+  function readSecrets(): Record<string, unknown> {
+    const p = join(workDir, ".openclaw", "secrets.json");
+    if (!existsSync(p)) return {};
+    return JSON.parse(readFileSync(p, "utf8")) as Record<string, unknown>;
+  }
+
+  // The SecretRef the mirror writes into plugin config for a sensitive key.
+  function ref(prefixedKey: string) {
+    return { source: "file", provider: "secrets", id: `/${OPENCLAW_PLUGIN_ID}/${prefixedKey}` };
+  }
+
   it("returns 'not-installed' when OpenClaw config is missing", () => {
     // No fixture written.
     rmSync(configPath, { force: true });
@@ -79,10 +90,14 @@ describe("integrations/openclaw/install", () => {
     const cfg = readConfig();
     const entry = (cfg["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
     expect(entry.enabled).toBe(true);
+    // Non-secret apiKey stays inline; sensitive authToken becomes a SecretRef
+    // pointer and the value lands in the shared secret store — never inline.
     expect(entry.config).toEqual({
       resy_apiKey: "pk_123",
-      resy_authToken: "tok_456",
+      resy_authToken: ref("resy_authToken"),
     });
+    expect(readSecrets()).toEqual({ "restaurant-cli": { resy_authToken: "tok_456" } });
+    expect(JSON.stringify(cfg)).not.toContain("tok_456");
   });
 
   it("filters out keys not declared in the schema (e.g. email, firstName)", () => {
@@ -138,9 +153,11 @@ describe("integrations/openclaw/install", () => {
 
     const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
     expect(entry.config).toEqual({
-      resy_authToken: "new_tok",
+      resy_authToken: ref("resy_authToken"),
       opentable_sessionId: "keep_me",
     });
+    // The rotated value replaced the old inline plaintext in the store.
+    expect(readSecrets()).toEqual({ "restaurant-cli": { resy_authToken: "new_tok" } });
   });
 
   it("skips empty values and the reserved 'password' field", () => {
@@ -161,7 +178,23 @@ describe("integrations/openclaw/install", () => {
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
     const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
-    expect(entry.config).toEqual({ resy_authToken: "tok_456" });
+    expect(entry.config).toEqual({ resy_authToken: ref("resy_authToken") });
+    expect(readSecrets()).toEqual({ "restaurant-cli": { resy_authToken: "tok_456" } });
+  });
+
+  it("creates no secret store when only non-sensitive keys are mirrored", () => {
+    writeConfig({ plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} } });
+
+    const result = mirrorCredentialsToOpenClaw(
+      "resy",
+      { apiKey: "pk_public" },
+      { allowedKeys: RESY_KEYS },
+    );
+
+    expect(result.status).toBe("ok");
+    const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
+    expect(entry.config).toEqual({ resy_apiKey: "pk_public" }); // inline, not a ref
+    expect(existsSync(join(workDir, ".openclaw", "secrets.json"))).toBe(false);
   });
 
   it("is idempotent — re-running with same creds makes no changes", () => {
@@ -204,17 +237,19 @@ describe("integrations/openclaw/install", () => {
     });
   });
 
-  it("backs up the config file before writing", () => {
+  it("never leaves a secret-bearing backup, and purges legacy ones", () => {
     writeConfig({ plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} } });
-    const before = readFileSync(configPath, "utf8");
+    // Simulate a backup left by an older version that inlined a plaintext token.
+    const legacyBackup = join(workDir, ".openclaw", "openclaw.json.bak.restaurant-12345");
+    writeFileSync(legacyBackup, JSON.stringify({ leaked: "old_secret_tok" }));
 
     mirrorCredentialsToOpenClaw("resy", { authToken: "tok" }, { allowedKeys: RESY_KEYS });
 
     const backups = readdirSync(join(workDir, ".openclaw")).filter((f) =>
       f.startsWith("openclaw.json.bak.restaurant-"),
     );
-    expect(backups.length).toBe(1);
-    expect(readFileSync(join(workDir, ".openclaw", backups[0]!), "utf8")).toBe(before);
+    expect(backups).toEqual([]); // none created, legacy one purged
+    expect(existsSync(legacyBackup)).toBe(false);
   });
 
   it("loads schema keys from the plugin manifest when allowedKeys omitted", () => {
@@ -231,7 +266,8 @@ describe("integrations/openclaw/install", () => {
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
     const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
-    expect(entry.config).toHaveProperty("resy_authToken", "tok");
+    expect(entry.config.resy_authToken).toEqual(ref("resy_authToken"));
+    expect(readSecrets()).toEqual({ "restaurant-cli": { resy_authToken: "tok" } });
     expect(entry.config).not.toHaveProperty("resy_email");
   });
 

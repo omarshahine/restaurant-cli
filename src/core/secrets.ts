@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { AuthError } from "./errors.js";
@@ -6,7 +6,7 @@ import { isSecretRef, type SecretRef } from "./types.js";
 
 const SECRETS_FILE = join(homedir(), ".secrets.env");
 
-function openclawSecretsPath(): string {
+export function openclawSecretsPath(): string {
   return join(homedir(), ".openclaw", "secrets.json");
 }
 
@@ -115,6 +115,77 @@ export function secretKeyPresent(key: string): boolean {
 
 export function secretsFilePath(): string {
   return SECRETS_FILE;
+}
+
+/**
+ * Read a single value out of the OpenClaw shared secret store
+ * (`~/.openclaw/secrets.json`) by RFC 6901 JSON pointer. Returns undefined
+ * if the store, the path, or a non-string value is missing. This is the
+ * read counterpart to {@link setOpenClawSecret} and mirrors how
+ * `resolveSecret` follows a `provider: "secrets"` ref.
+ */
+export function readOpenClawSecret(pointer: string): string | undefined {
+  const path = openclawSecretsPath();
+  if (!existsSync(path)) return undefined;
+  try {
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    const v = jsonPointer(doc, pointer);
+    return typeof v === "string" && v ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Write a single value into the OpenClaw shared secret store
+ * (`~/.openclaw/secrets.json`) at an RFC 6901 JSON pointer, creating the
+ * file and any intermediate objects. The store is the one plaintext home
+ * for a token; plugin config holds only a `{source:"file",
+ * provider:"secrets", id:<pointer>}` SecretRef pointing here, so the value
+ * is never duplicated into `~/.openclaw/openclaw.json`. Returns true if the
+ * stored value changed (new key or rotated value), false if it was already
+ * identical.
+ *
+ * Only simple top-level-ish pointers are supported (`/a`, `/a/b`); pointer
+ * segments un-escape `~1`/`~0` per RFC 6901 to match {@link jsonPointer}.
+ */
+export function setOpenClawSecret(pointer: string, value: string): boolean {
+  if (!pointer.startsWith("/")) {
+    throw new AuthError(`OpenClaw secret pointer must start with "/": ${pointer}`);
+  }
+  const path = openclawSecretsPath();
+  let doc: Record<string, unknown> = {};
+  if (existsSync(path)) {
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf8"));
+      if (parsed && typeof parsed === "object") doc = parsed as Record<string, unknown>;
+    } catch {
+      // Corrupt/non-JSON store: refuse to clobber it silently.
+      throw new AuthError(`Cannot parse OpenClaw secret store at ${path}`);
+    }
+  }
+
+  const segments = pointer
+    .replace(/^\//, "")
+    .split("/")
+    .map((p) => p.replace(/~1/g, "/").replace(/~0/g, "~"));
+
+  let cur: Record<string, unknown> = doc;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const seg = segments[i]!;
+    const next = cur[seg];
+    if (next == null || typeof next !== "object") {
+      cur[seg] = {};
+    }
+    cur = cur[seg] as Record<string, unknown>;
+  }
+  const leaf = segments[segments.length - 1]!;
+  if (cur[leaf] === value) return false;
+  cur[leaf] = value;
+
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(doc, null, 2) + "\n", { mode: 0o600 });
+  return true;
 }
 
 function quoteShellValue(v: string): string {

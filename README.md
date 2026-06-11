@@ -232,10 +232,19 @@ restaurant setup resy-openclaw    # auth + mirror creds into OpenClaw config
 
 The `-openclaw` suffix on `setup` is the bridge: `restaurant setup resy` persists
 credentials to `~/.secrets.env` + `~/.config/restaurant-cli/config.yaml` (CLI
-store); appending `-openclaw` additionally mirrors them into
-`plugins.entries.restaurant-cli.config` in `~/.openclaw/openclaw.json` so the
-gateway-side tools can find them. Works for any provider — `opentable-openclaw`,
-`tock-openclaw`, etc.
+store); appending `-openclaw` additionally registers them for the gateway-side
+tools. Works for any provider — `opentable-openclaw`, `tock-openclaw`, etc.
+
+**How the mirror stores secrets.** Sensitive values (auth tokens, session
+cookies) are written **once** into the OpenClaw shared secret store
+(`~/.openclaw/secrets.json`), and `plugins.entries.restaurant-cli.config` in
+`~/.openclaw/openclaw.json` holds only a `{source:"file", provider:"secrets",
+id:"/restaurant-cli/<key>"}` SecretRef pointing at it — the same pattern the
+parcel and travel-hub plugins use. Non-secret fields (the public `apiKey`,
+email) stay inline. Tokens are never duplicated into `openclaw.json`, and the
+installer no longer leaves secret-bearing `.bak` files (it also purges any left
+by older versions). The standalone CLI is unaffected — it keeps reading
+`~/.secrets.env` + `config.yaml`.
 
 ### From a clone
 
@@ -256,12 +265,21 @@ Installs from Omar's private marketplace:
 
 See the `skills/`, `agents/`, and `commands/` directories for the plugin surface.
 
-## Config
+## Config & credential storage
 
-- `~/.config/restaurant-cli/config.yaml` — non-secret config (default provider, timezone, logging).
-- `~/.secrets.env` — auth tokens (`RESY_AUTH_TOKEN`, etc.) referenced via `SecretRef`.
+- `~/.config/restaurant-cli/config.yaml` — non-secret config (default provider, timezone, logging) plus a `tokenRef` SecretRef pointer, never the token value.
+- `~/.secrets.env` — CLI auth tokens (`RESY_AUTH_TOKEN`, etc.), referenced by `config.yaml` via `{source:env}`.
+- `~/.openclaw/secrets.json` — when run as an OpenClaw plugin, the single home for mirrored tokens (referenced by SecretRef pointers).
 
-Never uses macOS Keychain.
+**Security note.** Tokens are stored in plaintext files in your home directory
+(`0600`). This is deliberate — the tool **never uses the macOS Keychain** — so
+the same credential works across the CLI, scheduled `at` jobs, and the OpenClaw
+gateway without an interactive unlock. The trade-off: anyone who can read your
+home directory (local compromise, unencrypted backups, shared boxes) can read
+the tokens. Treat `~/.secrets.env` and `~/.openclaw/secrets.json` as sensitive,
+keep them out of backups/syncs you don't control, and rotate a token by editing
+the file. Tokens are bearer credentials scoped to reservation actions on your
+own account.
 
 ## Snipe how it works
 
