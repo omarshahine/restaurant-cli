@@ -1,7 +1,7 @@
 {
   "id": "restaurant-cli",
   "name": "Restaurant",
-  "description": "Pluggable reservation booking via Resy and OpenTable (Tock and SevenRooms are stubbed for future support)",
+  "description": "Pluggable restaurant reservations. Resy: full search/availability/book/cancel via a documented token. OpenTable and Tock: search/availability only (read-only), via live-site automation since neither has an official public API. SevenRooms: planned.",
   "skills": [
     "skills/restaurant"
   ],

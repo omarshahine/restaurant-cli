@@ -8,6 +8,7 @@ import { resolveCliBinary, shellQuote } from "../../core/shell.js";
 import { createAtScheduler } from "../../scheduler/at.js";
 import { confirmTTY } from "../prompts.js";
 import { AGENT_ARGS, emit, parseAgentArgs } from "../output.js";
+import { warnUnattendedSnipe } from "../../core/warnings.js";
 
 export const snipeCommand = defineCommand({
   meta: {
@@ -65,6 +66,9 @@ export const snipeCommand = defineCommand({
       });
       return;
     }
+
+    // Disclose that this fires unattended and books with --yes at release time.
+    warnUnattendedSnipe();
 
     if (!agentArgs.yes) {
       const ok = await confirmTTY(

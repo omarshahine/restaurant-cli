@@ -23,6 +23,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { warnBrowserAutomation } from "../../core/warnings.js";
 import {
   NotFoundError,
   ProviderError,
@@ -109,6 +110,10 @@ function missingBinaryError(): ProviderError {
 async function runTrg(args: string[], timeoutMs = DEFAULT_TIMEOUT_MS): Promise<unknown> {
   const bin = resolveTrgBinary();
   if (!bin) throw missingBinaryError();
+
+  // Disclose (once) that Tock reads go through an external binary that
+  // impersonates a browser's TLS fingerprint against the live site.
+  warnBrowserAutomation("Tock");
 
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });

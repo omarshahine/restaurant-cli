@@ -14,6 +14,7 @@ import {
   mirrorCredentialsToOpenClaw,
   OPENCLAW_PLUGIN_ID,
 } from "../../integrations/openclaw/install.js";
+import { warnPlaintextCredentialStorage } from "../../core/warnings.js";
 
 const KNOWN_TARGETS = ["openclaw"] as const;
 type SetupTarget = (typeof KNOWN_TARGETS)[number];
@@ -50,6 +51,8 @@ export const setupCommand = defineCommand({
     try {
       // eslint-disable-next-line no-console
       console.log(`Setting up ${provider.displayName} (${provider.id})`);
+      // Disclose plaintext credential storage BEFORE collecting any secret.
+      warnPlaintextCredentialStorage();
       const prompts = provider.auth.setupPrompts();
       const answers: Credentials = {};
 

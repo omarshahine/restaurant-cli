@@ -160,6 +160,14 @@ Env-var floors (override flags):
 | OpenTable | ✓ | ✓ | — | — | — | — | ✓ |
 | Tock | ✓ | ✓ | — | — | — | — | — |
 
+> **⚠ Automation & Terms of Service.** Resy uses a documented token. OpenTable
+> and Tock have **no official public API**, so reading their availability means
+> automating the live site — a stealth-patched browser (OpenTable) or a
+> TLS-fingerprint-impersonating binary (Tock) to get past anti-bot protections.
+> This may be against those sites' Terms of Service; use the OpenTable/Tock
+> providers at your own risk. The CLI prints a one-time runtime notice when a
+> browser-automation path runs. Resy-only use involves none of this.
+
 ### Tock specifics
 
 Tock anonymous reads (`search`, `availability`) shell out to [`table-reservation-goat-pp-cli`](https://github.com/mvanhorn/printing-press-library) — a Go binary by Matt Van Horn / Pejman Pour-Moezzi (Apache-2.0) that handles two things Node can't do cleanly: (1) Chrome TLS fingerprint impersonation to clear Cloudflare, and (2) sourcing the page-issued `x-tock-session` token Tock's React bundle mints client-side. Install it once:
@@ -280,6 +288,20 @@ the tokens. Treat `~/.secrets.env` and `~/.openclaw/secrets.json` as sensitive,
 keep them out of backups/syncs you don't control, and rotate a token by editing
 the file. Tokens are bearer credentials scoped to reservation actions on your
 own account.
+
+**How tokens are obtained.** These providers don't issue partner API keys for
+this kind of use, so the credential is *your own* session material:
+- **Resy** — `restaurant setup resy` exchanges your email + password for a
+  durable token via Resy's login endpoint (password is used once, never stored).
+- **OpenTable / Tock** — you export *your own* logged-in session cookies from
+  your browser (DevTools → Application → Cookies → copy as JSON) and pass them
+  with `auth login <provider> --from-file`. Nothing is harvested without you
+  doing this deliberately for your own account.
+
+`restaurant config` masks secret-looking values by default; pass `--show-secrets`
+to print them in full. `restaurant setup`, `auth login`, and `snipe` print a
+one-time notice about what they store and (for snipe) that the job books
+unattended at fire time.
 
 ## Snipe how it works
 
