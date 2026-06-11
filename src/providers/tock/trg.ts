@@ -113,7 +113,7 @@ async function runTrg(args: string[], timeoutMs = DEFAULT_TIMEOUT_MS): Promise<u
 
   // Disclose (once) that Tock reads go through an external binary that
   // impersonates a browser's TLS fingerprint against the live site.
-  warnBrowserAutomation("Tock");
+  warnBrowserAutomation("Tock", "tls-binary");
 
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });

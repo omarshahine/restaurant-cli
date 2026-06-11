@@ -20,6 +20,20 @@ describe("config redact", () => {
     });
   });
 
+  it("masks secret-named keys regardless of value type (string, array, object)", () => {
+    expect(
+      redact({
+        sessionCookies: [{ name: "sid", value: "abc" }],
+        auth: { token: "nested" },
+        apiKey: "k",
+      }),
+    ).toEqual({
+      sessionCookies: "***redacted***",
+      auth: "***redacted***",
+      apiKey: "***redacted***",
+    });
+  });
+
   it("preserves tokenRef pointers (they hold no value)", () => {
     const ref = { source: "file", provider: "secrets", id: "/restaurant-cli/resy_authToken" };
     expect(redact({ tokenRef: ref })).toEqual({ tokenRef: ref });

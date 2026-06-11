@@ -19,7 +19,9 @@ export function redact(value: unknown): unknown {
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (k === "tokenRef") {
         out[k] = v; // pointer, not a value
-      } else if (SECRET_KEY_RE.test(k) && typeof v === "string") {
+      } else if (SECRET_KEY_RE.test(k)) {
+        // Mask the whole value regardless of type — a secret-named key may
+        // hold a string, an array of cookies, or a nested object.
         out[k] = "***redacted***";
       } else {
         out[k] = redact(v);

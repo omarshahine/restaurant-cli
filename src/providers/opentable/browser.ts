@@ -97,7 +97,7 @@ async function launch(
 ): Promise<{ browser: Browser | null; context: BrowserContext; page: Page }> {
   // Disclose (once) that we're automating the live site with a persistent
   // profile — there is no official API and this may be against OpenTable's ToS.
-  warnBrowserAutomation("OpenTable");
+  warnBrowserAutomation("OpenTable", "browser-profile");
   const pw = await loadPlaywright();
   const useSystemChrome = process.env["RESTAURANT_CLI_BROWSER_CHANNEL"] !== "chromium";
   const profileDir =
