@@ -5,6 +5,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.21] — 2026-06-11
+
+### Security
+- **OpenClaw mirror no longer inlines secrets into `openclaw.json`.** When you
+  run `restaurant setup <provider>-openclaw`, sensitive values (auth tokens,
+  session cookies) are now written **once** into the OpenClaw shared secret
+  store (`~/.openclaw/secrets.json`) and the plugin config holds only a
+  `{source:"file", provider:"secrets", id:"/restaurant-cli/<key>"}` SecretRef —
+  the same pattern the parcel and travel-hub plugins use. Previously the raw
+  token value was copied inline into `~/.openclaw/openclaw.json`. Non-secret
+  fields (the public Resy `apiKey`, email) stay inline. This addresses the
+  ClawHub security-audit findings about credential replication across config
+  files.
+- **No more secret-bearing backups.** The mirror previously wrote a timestamped
+  `openclaw.json.bak.restaurant-*` copy on every change, leaving plaintext
+  tokens on disk indefinitely. Those backups are no longer created, and any
+  left by older versions are purged on the next mirror.
+- **Standalone CLI is unchanged** — it still reads `~/.secrets.env` +
+  `config.yaml` and never touches the shared store. No regression for non-OpenClaw use.
+
+### Added
+- `setOpenClawSecret` / `readOpenClawSecret` helpers in `core/secrets.ts` for
+  the shared store, plus `provider` on the `SecretRef` config-schema branches.
+  Round-trip and routing covered by new tests (159 total).
+
 ## [0.1.20] — 2026-06-11
 
 ### Security

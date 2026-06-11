@@ -25,6 +25,10 @@
                   "file"
                 ]
               },
+              "provider": {
+                "type": "string",
+                "description": "Secret backend, e.g. \"secrets\" for ~/.openclaw/secrets.json"
+              },
               "id": {
                 "type": "string"
               }
@@ -52,6 +56,10 @@
                   "env",
                   "file"
                 ]
+              },
+              "provider": {
+                "type": "string",
+                "description": "Secret backend, e.g. \"secrets\" for ~/.openclaw/secrets.json"
               },
               "id": {
                 "type": "string"
