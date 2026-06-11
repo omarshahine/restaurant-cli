@@ -171,7 +171,11 @@ export class AtScheduler implements Scheduler {
   }
 
   /**
-   * Write the command inside a shell wrapper that:
+   * Build the bash wrapper fed to `at` on stdin. Public so the scheduler test
+   * can assert the security-sensitive secret-import shape (allowlist filtering,
+   * no `eval`/`source`) without spawning the real `at` queue.
+   *
+   * The wrapper:
    *   - imports ONLY restaurant-cli provider tokens from ~/.secrets.env
    *     (e.g. RESY_AUTH_TOKEN). Sourcing the entire env file would
    *     expose unrelated secrets (database URLs, GitHub tokens, etc.)
@@ -182,11 +186,6 @@ export class AtScheduler implements Scheduler {
    *   - emits a tight JSONL line at start + end for `restaurant jobs logs`
    *
    * The result snippet is fed to `at` on stdin.
-   */
-  /**
-   * Build the bash wrapper fed to `at` on stdin. Public so the scheduler test
-   * can assert the security-sensitive secret-import shape (allowlist filtering,
-   * no `eval`/`source`) without spawning the real `at` queue.
    */
   buildWrapperScript(job: ScheduledJob): string {
     const logFile = this.logFilePath(job.id);
