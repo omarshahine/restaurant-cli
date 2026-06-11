@@ -27,7 +27,10 @@
               },
               "provider": {
                 "type": "string",
-                "description": "Secret backend, e.g. \"secrets\" for ~/.openclaw/secrets.json"
+                "enum": [
+                  "secrets"
+                ],
+                "description": "Secret backend. Only \"secrets\" (~/.openclaw/secrets.json) is supported."
               },
               "id": {
                 "type": "string"
@@ -59,7 +62,10 @@
               },
               "provider": {
                 "type": "string",
-                "description": "Secret backend, e.g. \"secrets\" for ~/.openclaw/secrets.json"
+                "enum": [
+                  "secrets"
+                ],
+                "description": "Secret backend. Only \"secrets\" (~/.openclaw/secrets.json) is supported."
               },
               "id": {
                 "type": "string"

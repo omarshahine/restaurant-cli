@@ -47,13 +47,11 @@ export const OPENCLAW_PLUGIN_ID = "restaurant-cli";
  * in `openclaw.json`. These route to the shared secret store as SecretRefs.
  * Resy's `apiKey` is intentionally absent — it is a public client key.
  */
-export const SENSITIVE_CRED_KEYS = new Set([
-  "authToken",
-  "sessionCookies",
-  "cvc",
-  "token",
-  "password",
-]);
+export const SENSITIVE_CRED_KEYS = new Set(["authToken", "sessionCookies", "cvc", "token"]);
+// Note: `password` is intentionally NOT here. It is a hard drop (never stored
+// anywhere) via the early-continue guard in the write loop — it's an ephemeral
+// login input, not a durable credential. Adding it to this set would be
+// contradictory: the guard fires first, so it would have no effect.
 
 /** JSON pointer into ~/.openclaw/secrets.json for a prefixed config key. */
 function secretPointer(prefixedKey: string): string {
@@ -130,7 +128,7 @@ export function mirrorCredentialsToOpenClaw(
   const prefix = `${providerId}_`;
 
   for (const [k, v] of Object.entries(creds)) {
-    if (k === "password") continue;
+    if (k === "password") continue; // hard drop: ephemeral login input, never stored
     if (typeof v !== "string" || !v) continue;
     const key = `${prefix}${k}`;
     if (allowedKeys && !allowedKeys.has(key)) continue;
@@ -172,10 +170,12 @@ export function mirrorCredentialsToOpenClaw(
     // plaintext secrets on disk indefinitely (flagged by the security
     // audit). openclaw.json now holds only SecretRefs + non-secret fields.
     writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+    // Clean up secret-bearing backups left by older versions of this mirror.
+    // Scoped to the write path so an idempotent no-op call doesn't scan the
+    // directory; the first run that converts an inline secret to a ref (always
+    // the first run after upgrade) purges them.
+    purgeLegacyBackups(configPath);
   }
-
-  // Clean up secret-bearing backups left by older versions of this mirror.
-  purgeLegacyBackups(configPath);
 
   return { status: "ok", updated, removed, configPath };
 }
