@@ -1,64 +1,30 @@
 /**
- * Browser-driven OpenTable fetcher — ACCESS proven, SCRAPING still TODO.
+ * Browser-driven OpenTable fetcher.
  *
- * OpenTable's /dapi/ endpoints are protected by Akamai Bot Manager. Live
- * probing (2026-04-17) mapped the exact recipe that defeats the anti-bot
- * check AND the follow-up combinations that extend its effectiveness:
+ * OpenTable has no official public API, so reading availability means driving
+ * a real browser against the live site, which is protected by Akamai Bot
+ * Manager. This module launches a stealth-patched Chromium (patchright) with a
+ * persistent profile to load the page the same way a normal browser would,
+ * then reads the availability data the page itself fetches. This is automation
+ * against a third party that may be contrary to OpenTable's Terms of Service —
+ * the user is warned at runtime (see `warnBrowserAutomation`), and it is opt-in
+ * via the OpenTable provider path. Playwright/patchright are optional peer
+ * dependencies, so the core CLI does not pull them in.
  *
- *   ✓ **Working recipe for page access**:
- *     - `patchright` (stealth-patched Playwright fork), not plain `playwright`
- *     - `chromium.launchPersistentContext(profileDir, { channel: "chrome" })` —
- *       system Chrome binary, persistent profile to accumulate trust cookies
- *     - `headless: false` (headless mode still trips Akamai's JS checks)
- *     - Mouse-jitter interaction for ~4-5 seconds after navigation so
- *       Akamai's client-side challenge JS passes
- *     - `--disable-blink-features=AutomationControlled` launch arg
+ * Capability scope: availability reads only. This module is READ-ONLY —
+ * nothing here can complete or modify a booking. OpenTable provider
+ * capabilities stay `bookUrl: true` (hand-off via deep link), not auto-book.
  *
- *   With those applied: navigation returns 200, title populates correctly
- *   ("Restaurant Reservation Availability | OpenTable"), and the page's own
- *   XHRs to `/dapi/fe/gql?opname=<Autocomplete|LocationPicker|...>` return
- *   real structured JSON.
- *
- * What does NOT work yet (the remaining engineering):
- *   - Calling `/dapi/fe/gql` from within page context via the page's own
- *     XHR helper returns 403. The page's own requests include headers
- *     (CSRF / persisted query hash / ot-origin) that aren't obvious to
- *     replicate.
- *   - `locator.type()` into the search input — times out, likely an overlay
- *     or focus issue we didn't finish debugging.
- *
- * What DOES work for harvesting data today:
- *   - Observing the page's own XHRs via `page.on("response", ...)` and
- *     filtering for `opname=<Autocomplete|RestaurantsAvailability>`. The
- *     probe captured a real 11KB Autocomplete response with 30 results.
- *     Turning that into a deterministic scrape needs triggering the page's
- *     own search flow (typing in the box, or navigating to a URL the page
- *     turns into a specific query).
- *
- * Next session plan:
- *   1. Trigger the page's search via `page.keyboard.type()` after click;
- *      debug why `locator.type()` times out.
- *   2. Alternative: navigate to `/r/<slug>` restaurant profile pages and
- *      scrape rendered availability tiles from the DOM (bypasses the GQL
- *      request-shape problem entirely for known restaurants).
- *   3. Wire a real `searchViaBrowser` → parseAutocomplete pipeline.
- *   4. Flip `capabilities.search = true` in provider.ts.
- *
- * Until those land, OpenTable capabilities stay `bookUrl: true` only. The
- * scaffolding below holds the verified-working launch/stealth config so
- * the next attempt starts from a known-good base.
- *
- * Safety invariant (from mikehe123/opentable-reservations): this module is
- * READ-ONLY. Nothing in here can complete a booking.
- *
- * Playwright and patchright are both optional peerDependencies. The core
- * CLI works without them; `loadPlaywright()` dynamically imports at call
- * time.
+ * Implementation note: data is read by observing the page's own XHR responses
+ * rather than replaying its internal GraphQL calls (those carry per-session
+ * CSRF/persisted-query headers). Search-by-typing is not yet wired, so
+ * `capabilities.search` remains false in provider.ts.
  */
 
 // Type-only import so tsc is happy even when playwright isn't installed at
 // compile time. The value-side import is dynamic (below) for that reason.
 import type { Browser, BrowserContext, Page } from "playwright";
+import { warnBrowserAutomation } from "../../core/warnings.js";
 
 export interface BrowserFetchOptions {
   /** Headless by default. Set RESTAURANT_CLI_HEADED=1 to see the browser. */
@@ -129,6 +95,9 @@ const REAL_CHROME_UA =
 async function launch(
   opts: BrowserFetchOptions = {},
 ): Promise<{ browser: Browser | null; context: BrowserContext; page: Page }> {
+  // Disclose (once) that we're automating the live site with a persistent
+  // profile — there is no official API and this may be against OpenTable's ToS.
+  warnBrowserAutomation("OpenTable", "browser-profile");
   const pw = await loadPlaywright();
   const useSystemChrome = process.env["RESTAURANT_CLI_BROWSER_CHANNEL"] !== "chromium";
   const profileDir =

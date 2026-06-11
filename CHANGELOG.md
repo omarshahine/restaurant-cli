@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.22] — 2026-06-11
+
+### Security / transparency
+Addresses the remaining honestly-fixable ClawHub security-audit findings —
+the "missing user warnings", token-exposure, and intent-divergence clusters —
+by making the tool's behavior explicit rather than silent. (Findings that are
+intentional by design — plaintext-by-no-Keychain-rule, and live-site browser
+automation for OpenTable/Tock which have no official API — are now *disclosed*
+rather than removed.)
+
+- **Plaintext credential disclosure.** `setup`, `auth login`, and `snipe` now
+  print a one-time notice (to stderr, never polluting `--json`) explaining that
+  a long-lived bearer token/cookie is stored in plaintext, before it is written.
+- **Unattended-booking warning.** `snipe` warns that the scheduled job loads
+  your token and runs `book --yes` with no further confirmation at fire time.
+- **Browser-automation / ToS disclosure.** The OpenTable (patchright) and Tock
+  (TLS-impersonating binary) paths print a one-time notice that there is no
+  official API, the tool drives the live site, and this may be against the
+  site's Terms of Service.
+- **`restaurant config` masks secrets** by default (token/secret/password/
+  cookie/apiKey/auth values → `***redacted***`); pass `--show-secrets` for the
+  raw values. SecretRef `tokenRef` pointers are preserved (they hold no value).
+- **Doc accuracy.** Trimmed the OpenTable browser module's step-by-step anti-bot
+  "recipe / next-session playbook" comments to a factual description; corrected
+  the plugin manifest description (Tock/OpenTable are read-only, not "stubbed");
+  de-personalized credential-location comments.
+- New `core/warnings.ts` module; tests for redaction + warnings (166 total).
+
 ## [0.1.21] — 2026-06-11
 
 ### Security

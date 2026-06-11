@@ -12,10 +12,11 @@
  *
  * Limitations:
  *   - Reading Chrome's encrypted cookie DB requires the OS keychain on macOS
- *     (Chrome Safe Storage), which Omar's setup intentionally avoids (no
- *     macOS Keychain rule). Instead we use a `--from-file` path where the
- *     user dumps cookies via Chrome DevTools → Application → Cookies →
- *     "copy as JSON" and pipes that file in. Documented in the README.
+ *     (Chrome Safe Storage), which this tool intentionally avoids (it never
+ *     uses the macOS Keychain). Instead we use a `--from-file` path where the
+ *     user exports their own cookies via Chrome DevTools → Application →
+ *     Cookies → "copy as JSON" and pipes that file in. Documented in the
+ *     README. These are the user's own session cookies for their own account.
  *   - For Tock and OpenTable only — Resy uses email/password → token
  *     exchange and doesn't need this path.
  */
@@ -29,6 +30,7 @@ import {
 } from "../../core/secrets.js";
 import { AGENT_ARGS, emit, emitError, parseAgentArgs } from "../output.js";
 import { UsageError } from "../../core/errors.js";
+import { warnPlaintextCredentialStorage } from "../../core/warnings.js";
 
 const KNOWN_PROVIDERS = new Set(["opentable", "tock"]);
 
@@ -157,6 +159,9 @@ const loginCmd = defineCommand({
       emit(result, agentArgs, { human: () => result.message });
       return;
     }
+    warnPlaintextCredentialStorage(
+      "Imported browser session cookies are bearer credentials — anyone with them can act as your logged-in session.",
+    );
     appendSecret(envVar, cookieHeader);
     const result = {
       ok: true,
