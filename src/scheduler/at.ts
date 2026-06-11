@@ -183,7 +183,12 @@ export class AtScheduler implements Scheduler {
    *
    * The result snippet is fed to `at` on stdin.
    */
-  private buildWrapperScript(job: ScheduledJob): string {
+  /**
+   * Build the bash wrapper fed to `at` on stdin. Public so the scheduler test
+   * can assert the security-sensitive secret-import shape (allowlist filtering,
+   * no `eval`/`source`) without spawning the real `at` queue.
+   */
+  buildWrapperScript(job: ScheduledJob): string {
     const logFile = this.logFilePath(job.id);
     mkdirSync(dirname(logFile), { recursive: true });
 
@@ -205,9 +210,12 @@ export class AtScheduler implements Scheduler {
       "TOCK_CVC",
       "SEVENROOMS_AUTH_TOKEN",
     ];
-    // Anchor each key in a regex alternation. We use `eval` on the matched
-    // `export KEY=...` lines rather than `source`-ing the file so unrelated
-    // exports never enter the wrapper's environment.
+    // Anchor each key in a `case` alternation. We parse the matched
+    // `export KEY=...` lines with a plain `read` + literal assignment rather
+    // than `source`-ing or `eval`-ing them, so (a) unrelated exports never
+    // enter the wrapper's environment and (b) a compromised secrets file
+    // can't smuggle `$(...)` command substitution into the at job — the
+    // value is assigned verbatim, never re-evaluated by the shell.
     const keyAlt = allowedKeys.join("|");
 
     // We wrap in `{ ... } >> log 2>&1` to capture both streams in order.
@@ -218,9 +226,22 @@ export class AtScheduler implements Scheduler {
       `#!/bin/bash`,
       `set +e`,
       `__rcli_import_keys() {`,
-      `  local file="$1"`,
+      `  local file="$1" line key val`,
       `  [ -f "$file" ] || return 0`,
-      `  eval "$(grep -E '^export (${keyAlt})=' "$file" 2>/dev/null || true)"`,
+      `  while IFS= read -r line || [ -n "$line" ]; do`,
+      `    case "$line" in export\\ *=*) ;; *) continue ;; esac`,
+      `    line="\${line#export }"`,
+      `    key="\${line%%=*}"`,
+      `    val="\${line#*=}"`,
+      // Strip one layer of surrounding single or double quotes (appendSecret
+      // single-quotes values). The value is then assigned literally — no
+      // command substitution or word-splitting is performed on it.
+      `    case "$val" in`,
+      `      \\'*\\') val="\${val#\\'}"; val="\${val%\\'}" ;;`,
+      `      \\"*\\") val="\${val#\\"}"; val="\${val%\\"}" ;;`,
+      `    esac`,
+      `    case "$key" in ${keyAlt}) export "$key=$val" ;; esac`,
+      `  done < "$file"`,
       `}`,
       `{`,
       `  __rcli_import_keys "$HOME/.secrets.env"`,

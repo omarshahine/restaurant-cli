@@ -65,7 +65,8 @@ export class ResyClient {
    * Availability for a single venue / date / party size.
    * see resy-cli: internal/resy/find.go
    *
-   * M2 entry point; stubbed for now.
+   * Live, read-only GET against `/4/find`. Returns the available slots Resy
+   * publishes for the venue; does not mutate any reservation state.
    */
   async getAvailability(params: {
     venueId: string;
@@ -140,7 +141,11 @@ export class ResyClient {
    * Cancel a reservation.
    * see resy-cli: internal/resy/cancel.go
    *
-   * M2 entry point; stubbed for now.
+   * LIVE, DESTRUCTIVE call — POSTs to `/3/cancel` with the reservation's
+   * `resy_token` and irreversibly cancels the booking on the user's Resy
+   * account. This is gated by the provider `cancel` capability flag and the
+   * CLI's confirmation prompt; do not call it without an explicit user
+   * decision to cancel.
    */
   async cancel(reservationId: string): Promise<unknown> {
     return this.request("POST", `/3/cancel`, {

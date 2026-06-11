@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.20] — 2026-06-11
+
+### Security
+- **Scheduled-job secret import no longer uses `eval`**: the `at` wrapper
+  built by the snipe scheduler previously ran
+  `eval "$(grep '^export …' ~/.secrets.env)"` to load provider tokens at
+  fire time. A token value containing `$(…)`/backtick command substitution
+  (e.g. from a tampered secrets file) would have executed. The importer now
+  parses each `export KEY=VALUE` line with a literal `read` + assignment, so
+  values are stored verbatim and never re-evaluated by the shell. Allowlist
+  filtering (only provider tokens, never unrelated secrets) is preserved and
+  now covered by a regression test that fires a hostile payload through the
+  importer and asserts nothing executes.
+
+### Fixed
+- **Misleading "stubbed for now" doc comments** on `ResyClient.getAvailability`
+  and `ResyClient.cancel`. Both are fully live calls — `getAvailability` is a
+  read-only `GET /4/find`, and `cancel` is a live, destructive `POST /3/cancel`
+  gated behind the provider capability flag and the CLI confirmation prompt.
+  Comments now describe the real behavior instead of claiming the methods are
+  unimplemented.
+
 ## [0.1.18] — 2026-05-11
 
 ### Fixed
