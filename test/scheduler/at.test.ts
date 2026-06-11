@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAtScheduler, localTimestamp } from "../../src/scheduler/at.js";
@@ -119,6 +120,60 @@ describe("scheduler/at", () => {
         providerId: "resy",
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("imports secrets without eval/source and filters to an allowlist", () => {
+    const sched = createAtScheduler({ enqueue: enqueueStub, cancelAt: cancelAtStub });
+    const script = sched.buildWrapperScript({
+      id: "snipe-2027-01-01T00-00-00-000Z-abcd1234",
+      command: "restaurant book --venue 1 --party 2",
+      runAt: new Date("2027-01-01T00:00:00Z"),
+      providerId: "resy",
+    });
+    // A compromised secrets file must never reach `eval` or `source`: those
+    // would execute `$(...)`/backtick payloads embedded in a token value.
+    expect(script).not.toMatch(/\beval\b/);
+    expect(script).not.toMatch(/\bsource\b/);
+    expect(script).not.toMatch(/^\s*\.\s+["$]/m);
+    // The safe importer reads each line literally and assigns verbatim.
+    expect(script).toContain("while IFS= read -r line");
+    expect(script).toContain('export "$key=$val"');
+    // Only provider tokens are allowlisted; unrelated secrets stay isolated.
+    expect(script).toContain("RESY_AUTH_TOKEN");
+    expect(script).not.toContain("GITHUB_TOKEN");
+  });
+
+  it("secret import executes no command substitution from a hostile token", () => {
+    const sched = createAtScheduler({ enqueue: enqueueStub, cancelAt: cancelAtStub });
+    const script = sched.buildWrapperScript({
+      id: "snipe-2027-01-01T00-00-00-000Z-deadbeef",
+      command: ":",
+      runAt: new Date("2027-01-01T00:00:00Z"),
+      providerId: "resy",
+    });
+    const proof = join(tmp, "PWNED_PROOF");
+    const secretsFile = join(tmp, "hostile.secrets.env");
+    writeFileSync(
+      secretsFile,
+      [
+        `export RESY_AUTH_TOKEN='$(touch ${proof})'`,
+        "export RESY_API_KEY=`touch " + proof + "`",
+        "export GITHUB_TOKEN='leaked'",
+        "",
+      ].join("\n"),
+    );
+    // Drive only the importer, then echo the imported value, against the
+    // hostile file. If the old `eval` path were present, the payload would
+    // run and create the proof file.
+    const harness = [
+      script.slice(0, script.indexOf("\n{")), // function definition only
+      `__rcli_import_keys "${secretsFile}"`,
+      'printf "%s" "$RESY_AUTH_TOKEN"',
+      "",
+    ].join("\n");
+    const out = execFileSync("bash", ["-c", harness], { encoding: "utf8" });
+    expect(existsSync(proof)).toBe(false); // no command substitution ran
+    expect(out).toBe("$(touch " + proof + ")"); // stored as a literal string
   });
 
   it("localTimestamp formats as YYYYMMDDHHMM in local time", () => {
