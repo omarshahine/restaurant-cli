@@ -5,6 +5,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.26] — 2026-06-23
+
+### Security — env-first credentials (the CLI writes no secret file)
+The 0.1.25 re-audit's remaining High "Credential Access" findings were all
+about the CLI writing tokens to `~/.secrets.env`. The tool now persists **no
+plaintext credential file of its own** — it is env-first.
+
+- **`restaurant setup` no longer writes `~/.secrets.env`.** It saves an env
+  `tokenRef` in `config.yaml` and prints an `export <PROVIDER>_AUTH_TOKEN='…'`
+  line (to stderr, once) for you to add to your own environment. The value is
+  resolved from the environment at runtime.
+- **`restaurant auth login` (session cookies) is env-first too** — it prints an
+  `export <PROVIDER>_SESSION_COOKIES='…'` line instead of writing the file;
+  `auth status` now reports presence from the environment, not a file.
+- Removed the now-unused `appendSecret` / `secretKeyPresent` writers from
+  `core/secrets.ts`. Replaced `warnPlaintextCredentialStorage` with
+  `instructEnvSecret` (the export-line helper). The snipe `at` wrapper still
+  *sources* your env file at fire time — you provide it; the plugin never
+  writes it.
+- Updated README / SKILL / setup docs to describe the env-first model.
+- Net effect: combined with 0.1.25 (no `~/.openclaw/secrets.json`), the plugin
+  writes zero plaintext credential stores. Whatever env file you choose to hold
+  the token is yours to manage (for this maintainer it's a chezmoi+age
+  encrypted-at-rest source).
+
 ## [0.1.25] — 2026-06-23
 
 ### Security — eliminate the OpenClaw plaintext secret store

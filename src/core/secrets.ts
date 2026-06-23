@@ -1,6 +1,6 @@
-import { readFileSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { AuthError } from "./errors.js";
 import { isSecretRef, type SecretRef } from "./types.js";
 
@@ -96,37 +96,20 @@ export function resolveSecret(
 }
 
 /**
- * Append a new `export KEY=VALUE` line to ~/.secrets.env. Creates the file if
- * missing. Does NOT deduplicate — callers should check first via
- * `secretKeyPresent`.
+ * The conventional path users source provider tokens from. The plugin no
+ * longer WRITES here — credentials are env-first: `setup`/`auth login` hand you
+ * an `export KEY=...` line to place in your own secret file, and the value is
+ * resolved from the environment at runtime. This path is surfaced by `doctor`
+ * and the snipe wrapper (which sources it) only as the conventional location.
  */
-export function appendSecret(key: string, value: string): void {
-  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
-    throw new AuthError(`Invalid secret key name: ${key}`);
-  }
-  mkdirSync(dirname(SECRETS_FILE), { recursive: true });
-  const line = `export ${key}=${quoteShellValue(value)}\n`;
-  appendFileSync(SECRETS_FILE, line, { mode: 0o600 });
-}
-
-export function secretKeyPresent(key: string): boolean {
-  if (!existsSync(SECRETS_FILE)) return false;
-  const re = new RegExp(`^\\s*export\\s+${key}=`, "m");
-  return re.test(readFileSync(SECRETS_FILE, "utf8"));
-}
-
 export function secretsFilePath(): string {
   return SECRETS_FILE;
 }
 
-// NOTE: this plugin no longer WRITES the OpenClaw shared secret store. The
-// OpenClaw mirror persists `{source:"env"}` SecretRefs that resolve from the
-// gateway environment, so no plaintext token is written to
-// `~/.openclaw/secrets.json`. The read path in `resolveSecret`
-// (`provider:"secrets"`) is retained only so legacy installs whose config still
-// carries a file-ref keep resolving.
-
-function quoteShellValue(v: string): string {
-  // Single-quote and escape any single quotes in the value.
-  return `'${v.replace(/'/g, `'\\''`)}'`;
-}
+// NOTE: this plugin writes NO plaintext credential store of its own.
+//   - The OpenClaw mirror persists `{source:"env"}` SecretRefs (resolved from
+//     the gateway env); it never writes `~/.openclaw/secrets.json`.
+//   - The CLI is env-first: it stores an env SecretRef in config.yaml and the
+//     token value lives only in your environment.
+// The `resolveSecret` read paths (`source:"env"`, and the legacy
+// `provider:"secrets"` file-ref) remain so configs keep resolving.

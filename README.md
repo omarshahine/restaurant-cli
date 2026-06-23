@@ -279,18 +279,16 @@ See the `skills/`, `agents/`, and `commands/` directories for the plugin surface
 ## Config & credential storage
 
 - `~/.config/restaurant-cli/config.yaml` — non-secret config (default provider, timezone, logging) plus a `tokenRef` SecretRef pointer, never the token value.
-- `~/.secrets.env` — CLI auth tokens (`RESY_AUTH_TOKEN`, etc.), referenced by `config.yaml` via `{source:env}`.
-- OpenClaw plugin mode — the gateway config (`~/.openclaw/openclaw.json`) stores only an **environment SecretRef** per token; the value is read from the gateway env (the manifest-required `RESY_AUTH_TOKEN`, etc.). The plugin writes no secret store of its own.
+- **The tool persists no secret of its own — it is env-first.** `restaurant setup` / `restaurant auth login` print an `export KEY=…` line; you place it in your own environment (e.g. `~/.secrets.env`, or a chezmoi/age-encrypted source). The token is resolved from the environment at runtime via `config.yaml`'s `{source:env}` ref.
+- OpenClaw plugin mode — the gateway config (`~/.openclaw/openclaw.json`) likewise stores only an **environment SecretRef** per token; the value is read from the gateway env (the manifest-required `RESY_AUTH_TOKEN`, etc.).
 
-**Security note.** The CLI stores tokens in a plaintext file in your home
-directory (`~/.secrets.env`, `0600`). This is deliberate — the tool **never uses
-the macOS Keychain** — so the same credential works across the CLI and scheduled
-`at` jobs without an interactive unlock. As an OpenClaw plugin it writes no
-plaintext secret of its own (it references the gateway env). The trade-off:
-anyone who can read your home directory (local compromise, unencrypted backups,
-shared boxes) can read `~/.secrets.env`. Treat it as sensitive, keep it out of
-backups/syncs you don't control, and rotate a token by editing the file. Tokens
-are bearer credentials scoped to reservation actions on your
+**Security note.** The tool **never uses the macOS Keychain** and **never writes
+a secret file of its own** — neither `~/.secrets.env` nor `~/.openclaw/secrets.json`.
+You provide the token through your environment; whatever file you choose to keep
+it in (commonly `~/.secrets.env`, `0600`) holds a bearer credential in plaintext,
+so treat it as sensitive, keep it out of backups/syncs you don't control, and
+rotate by editing it. Scheduled `at` jobs read the token from that env file at
+fire time. Tokens are bearer credentials scoped to reservation actions on your
 own account.
 
 **How tokens are obtained.** These providers don't issue partner API keys for

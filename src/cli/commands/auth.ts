@@ -1,7 +1,8 @@
 /**
  * `restaurant auth login --chrome <provider>` — import session cookies from
- * the local Chrome profile and persist them as `<PROVIDER>_SESSION_COOKIES`
- * in ~/.secrets.env.
+ * the local Chrome profile. env-first: the cookies are NOT written to disk;
+ * the command prints an `export <PROVIDER>_SESSION_COOKIES=…` line for the
+ * user to add to their own environment, and the value is read from there.
  *
  * Why Chrome? Tock's checkout flow uses Auth0 + Braintree CSRF bound to a
  * real browser session; partner API keys don't exist. The path of least
@@ -23,14 +24,9 @@
 
 import { defineCommand } from "citty";
 import { readFileSync } from "node:fs";
-import {
-  appendSecret,
-  secretKeyPresent,
-  secretsFilePath,
-} from "../../core/secrets.js";
 import { AGENT_ARGS, emit, emitError, parseAgentArgs } from "../output.js";
 import { UsageError } from "../../core/errors.js";
-import { warnPlaintextCredentialStorage } from "../../core/warnings.js";
+import { instructEnvSecret } from "../../core/warnings.js";
 
 const KNOWN_PROVIDERS = new Set(["opentable", "tock"]);
 
@@ -44,7 +40,10 @@ const KNOWN_PROVIDERS = new Set(["opentable", "tock"]);
  *   2. JSON array: `[{name, value}, ...]` — common DevTools paste shape.
  *   3. JSON object: `{cookies: [{name, value}, ...]}` — Playwright's export shape.
  */
-export function normalizeCookieBlob(input: string, providerHost?: string): string {
+export function normalizeCookieBlob(
+  input: string,
+  providerHost?: string,
+): string {
   const trimmed = input.trim();
   if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
     return trimmed.replace(/\n/g, " ");
@@ -63,7 +62,9 @@ export function normalizeCookieBlob(input: string, providerHost?: string): strin
       ? (parsed as { cookies: unknown[] }).cookies
       : null;
   if (!arr) {
-    throw new UsageError("Cookie JSON must be an array of {name, value} or {cookies: [...]}.");
+    throw new UsageError(
+      "Cookie JSON must be an array of {name, value} or {cookies: [...]}.",
+    );
   }
   const pairs: string[] = [];
   for (const entry of arr) {
@@ -84,7 +85,7 @@ const loginCmd = defineCommand({
   meta: {
     name: "login",
     description:
-      "Import session cookies into ~/.secrets.env (currently file-based; see --from-file)",
+      "Import session cookies and print an export line to add to your env (see --from-file)",
   },
   args: {
     provider: {
@@ -107,7 +108,9 @@ const loginCmd = defineCommand({
     ...AGENT_ARGS,
   },
   run({ args }) {
-    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
+    const agentArgs = parseAgentArgs(
+      args as unknown as Record<string, unknown>,
+    );
     const providerId = String(args.provider).toLowerCase();
     if (!KNOWN_PROVIDERS.has(providerId)) {
       throw new UsageError(
@@ -128,14 +131,18 @@ const loginCmd = defineCommand({
       return;
     }
     if (!file) {
-      throw new UsageError(`Pass --from-file <path> with a Chrome-exported cookie blob.`);
+      throw new UsageError(
+        `Pass --from-file <path> with a Chrome-exported cookie blob.`,
+      );
     }
 
     let raw: string;
     try {
       raw = readFileSync(file, "utf8");
     } catch (e) {
-      throw new UsageError(`Could not read cookie file: ${(e as Error).message}`);
+      throw new UsageError(
+        `Could not read cookie file: ${(e as Error).message}`,
+      );
     }
 
     const host = providerId === "tock" ? "exploretock.com" : "opentable.com";
@@ -148,48 +155,53 @@ const loginCmd = defineCommand({
     }
 
     const envVar = envVarFor(providerId);
-    if (secretKeyPresent(envVar)) {
+    if (process.env[envVar]) {
       const result = {
         ok: true,
         envVar,
-        secretsFile: secretsFilePath(),
-        status: "already_present",
-        message: `${envVar} already present in ${secretsFilePath()}. Edit manually to rotate.`,
+        status: "already_loaded",
+        message: `${envVar} is already set in your environment. Unset it first to rotate.`,
       };
       emit(result, agentArgs, { human: () => result.message });
       return;
     }
-    warnPlaintextCredentialStorage(
+    // env-first: do not write to disk. Hand the cookie header to the user to
+    // place in their environment.
+    instructEnvSecret(
+      envVar,
+      cookieHeader,
       "Imported browser session cookies are bearer credentials — anyone with them can act as your logged-in session.",
     );
-    appendSecret(envVar, cookieHeader);
     const result = {
       ok: true,
       envVar,
-      secretsFile: secretsFilePath(),
-      status: "written",
-      message: `Wrote ${envVar} to ${secretsFilePath()}. Run 'source ~/.secrets.env && restaurant doctor' to verify.`,
+      status: "instructed",
+      message: `Add ${envVar} to your environment (printed above), then \`source\` it and run \`restaurant doctor\`.`,
     };
     emit(result, agentArgs, { human: () => result.message });
   },
 });
 
 const statusCmd = defineCommand({
-  meta: { name: "status", description: "Show which providers have stored session cookies" },
+  meta: {
+    name: "status",
+    description: "Show which providers have stored session cookies",
+  },
   args: { ...AGENT_ARGS },
   run({ args }) {
-    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
+    const agentArgs = parseAgentArgs(
+      args as unknown as Record<string, unknown>,
+    );
     const rows = [...KNOWN_PROVIDERS].map((id) => ({
       provider: id,
       envVar: envVarFor(id),
       loaded: Boolean(process.env[envVarFor(id)]),
-      present: secretKeyPresent(envVarFor(id)),
     }));
     emit(rows, agentArgs, {
       human: (xs) =>
         xs.map(
           (r) =>
-            `${r.provider}: ${r.present ? "stored" : "missing"}${r.loaded ? " + loaded" : r.present ? " (source ~/.secrets.env)" : ""}`,
+            `${r.provider}: ${r.loaded ? "loaded from env" : "missing (set " + r.envVar + ")"}`,
         ),
     });
   },
