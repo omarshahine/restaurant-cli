@@ -48,6 +48,69 @@ export interface AtSchedulerDeps {
  */
 const JOB_ID_SAFE = /^[A-Za-z0-9_.\-:+]+$/;
 
+/**
+ * Shell metacharacters that enable command chaining, substitution, or
+ * redirection. A scheduled command is interpolated into the bash wrapper
+ * (`buildWrapperScript`) and run later by `at` with provider tokens in scope,
+ * so an unquoted one of these would turn the scheduler into a
+ * command-execution primitive. The legitimate producer (`snipe.ts`) emits a
+ * single `restaurant book …` invocation with every value `shellQuote`-wrapped,
+ * so these never appear UNQUOTED in a valid command.
+ */
+const SHELL_CONTROL_CHARS = new Set([
+  ";",
+  "&",
+  "|",
+  "<",
+  ">",
+  "`",
+  "$",
+  "(",
+  ")",
+]);
+
+/**
+ * Defense in depth: refuse to schedule a command that contains shell
+ * control/substitution operators OUTSIDE a single-quoted span. This neutralizes
+ * the "arbitrary shell" risk if any upstream caller (bug, prompt injection, or
+ * miswired workflow) tries to influence `job.command` — even though the only
+ * in-tree caller produces a fully-quoted `restaurant book` invocation. We scan
+ * single-quote aware (the only quoting `shellQuote` emits) and honor backslash
+ * escapes (the `'\''` dance) so legitimate quoted values pass untouched.
+ */
+export function assertShellSafeCommand(command: string): void {
+  if (/[\n\r]/.test(command)) {
+    throw new Error("Refusing to schedule a multi-line command.");
+  }
+  let inSingle = false;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!;
+    if (inSingle) {
+      if (c === "'") inSingle = false;
+      continue;
+    }
+    if (c === "\\") {
+      i++; // backslash escapes the next char outside quotes — skip it
+      continue;
+    }
+    if (c === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (SHELL_CONTROL_CHARS.has(c)) {
+      throw new Error(
+        `Refusing to schedule command with unquoted shell metacharacter "${c}". ` +
+          `Scheduled commands must be a single restaurant CLI invocation with quoted arguments.`,
+      );
+    }
+  }
+  if (inSingle) {
+    throw new Error(
+      "Refusing to schedule command with an unterminated single quote.",
+    );
+  }
+}
+
 export class AtScheduler implements Scheduler {
   readonly id = "at" as const;
   private readonly enqueueImpl: (job: ScheduledJob) => Promise<string>;
@@ -69,6 +132,7 @@ export class AtScheduler implements Scheduler {
         `Unsafe job id "${job.id}" — allowed chars: A-Z a-z 0-9 _ . - : +`,
       );
     }
+    assertShellSafeCommand(job.command);
     const jobs = loadJobs();
     if (jobs.some((j) => j.id === job.id)) {
       throw new Error(`Job ${job.id} already scheduled`);
@@ -125,7 +189,7 @@ export class AtScheduler implements Scheduler {
     return {
       ok: false,
       detail:
-        'POSIX `at` not found on PATH. On macOS enable it with `sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.atrun.plist`.',
+        "POSIX `at` not found on PATH. On macOS enable it with `sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.atrun.plist`.",
     };
   }
 
@@ -144,7 +208,9 @@ export class AtScheduler implements Scheduler {
     const t = localTimestamp(job.runAt);
 
     const atJobId = await new Promise<string>((resolve, reject) => {
-      const child = spawnProcess("at", ["-t", t], { stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawnProcess("at", ["-t", t], {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
       let stderr = "";
       child.stderr.on("data", (chunk: Buffer) => {
         stderr += chunk.toString();
@@ -259,7 +325,8 @@ export class AtScheduler implements Scheduler {
 
   /** Per-job log file path. Exposed so the `jobs logs` command can read it. */
   logFilePath(jobId: string): string {
-    const stateDir = process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state");
+    const stateDir =
+      process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state");
     return join(stateDir, "restaurant-cli", "logs", `${jobId}.log`);
   }
 }

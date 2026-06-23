@@ -109,6 +109,15 @@ export interface BookRequest {
    */
   slotToken?: string;
   notes?: string;
+  /**
+   * Hard confirmation gate. A provider that mutates a real account (Resy)
+   * MUST refuse to book unless this is explicitly `true`. Callers set it only
+   * after their own user-confirmation step (the CLI's y/N prompt or `--yes`,
+   * the OpenClaw tool's documented "confirm before invoking" contract). This
+   * is defense in depth: a miswired or injected call that forgets to set it
+   * fails closed instead of silently booking.
+   */
+  confirmed?: boolean;
 }
 
 export interface BookResult {
@@ -163,7 +172,16 @@ export interface Provider {
   searchVenues(q: VenueQuery, creds: Credentials): Promise<Venue[]>;
   getAvailability(q: AvailabilityQuery, creds: Credentials): Promise<Slot[]>;
   book(r: BookRequest, creds: Credentials): Promise<BookResult>;
-  cancel(reservationId: string, creds: Credentials): Promise<CancelResult>;
+  /**
+   * Cancel a reservation. `opts.confirmed` is the hard gate for providers that
+   * mutate a real account (Resy): they MUST refuse unless it is explicitly
+   * `true`. Callers set it only after their own confirmation step.
+   */
+  cancel(
+    reservationId: string,
+    creds: Credentials,
+    opts?: { confirmed?: boolean },
+  ): Promise<CancelResult>;
   listReservations(creds: Credentials): Promise<Reservation[]>;
   /**
    * Optional. Implemented when `capabilities.bookUrl` is true. Returns a

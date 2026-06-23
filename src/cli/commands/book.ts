@@ -137,7 +137,10 @@ export const bookCommand = defineCommand({
       }
     }
 
-    const result = await provider.book(bookRequest, creds);
+    // Reached only after the y/N gate above (or --yes). Stamp the hard
+    // confirmation flag here so the provider's destructive call can't fire
+    // without having passed a confirmation step.
+    const result = await provider.book({ ...bookRequest, confirmed: true }, creds);
 
     if (!result.ok) {
       // 3 = not_found if Resy says "no slot"; otherwise 5 = api error.

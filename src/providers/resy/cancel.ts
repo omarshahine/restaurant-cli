@@ -6,11 +6,24 @@ import { resyCredentials } from "./auth.js";
 /**
  * Cancel a reservation by resy_token.
  * see resy-cli: internal/resy/cancel.go
+ *
+ * Cancellation is irreversible, so it enforces a hard confirmation gate in
+ * code: `opts.confirmed` MUST be `true`. The CLI sets it after its y/N prompt
+ * (or `--yes`), the OpenClaw tool after its documented confirm contract. A call
+ * that omits it fails closed rather than cancelling a real reservation.
  */
 export async function cancel(
   reservationId: string,
   creds: Credentials,
+  opts?: { confirmed?: boolean },
 ): Promise<CancelResult> {
+  if (opts?.confirmed !== true) {
+    throw new ProviderError(
+      "Refusing to cancel: opts.confirmed must be explicitly true. " +
+        "Cancellation is irreversible and requires caller-side user confirmation.",
+      "resy",
+    );
+  }
   const client = new ResyClient(resyCredentials(creds));
   try {
     const raw = (await client.cancel(reservationId)) as {

@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.24] — 2026-06-23
+
+### Security / defense-in-depth
+Hardening pass on the destructive code paths the ClawHub v0.1.23 re-audit
+flagged High. Removes no features — the booking, cancellation, snipe, and
+provider behaviors are unchanged; these add in-code guardrails so a miswired,
+buggy, or injected caller fails closed.
+
+- **Scheduler command validation.** `AtScheduler.schedule()` now rejects any
+  `job.command` containing an unquoted shell control/substitution operator
+  (`; & | < > \` $ ( )`), a newline, or an unterminated quote, via
+  `assertShellSafeCommand`. The legitimate producer (`snipe.ts`) emits a
+  single fully-`shellQuote`d `restaurant book …` invocation, so valid commands
+  pass untouched; an attempt to smuggle command chaining/substitution into the
+  deferred `at` job is refused before it is ever written to the wrapper.
+- **Hard in-code confirmation gate on book/cancel.** `BookRequest.confirmed`
+  and `cancel(…, { confirmed })` must be explicitly `true`; the Resy provider
+  (the only path that mutates a real account) throws otherwise. The CLI stamps
+  the flag only after its y/N prompt (or `--yes`); the OpenClaw tools stamp it
+  to honor their documented "confirm before invoking" contract. A destructive
+  call that omits it now fails closed instead of silently booking/cancelling.
+- Added guard tests for all three new refusals.
+
 ## [0.1.23] — 2026-06-23
 
 ### Security / transparency

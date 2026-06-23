@@ -266,6 +266,10 @@ export function createOpenClawEntry(): {
                 partySize: Number(params["partySize"]),
                 ...(params["slotToken"] ? { slotToken: String(params["slotToken"]) } : {}),
                 ...(params["notes"] ? { notes: String(params["notes"]) } : {}),
+                // The tool contract (see description) is that the agent confirms
+                // with the user before invoking this DESTRUCTIVE tool. Stamp the
+                // provider's hard confirmation gate to honor that contract.
+                confirmed: true,
               },
               creds,
             );
@@ -382,7 +386,12 @@ export function createOpenClawEntry(): {
           }
           try {
             const creds = credsFor(provider, api.pluginConfig);
-            const result = await provider.cancel(String(params["reservationId"]), creds);
+            // The tool contract is that the agent confirms with the user before
+            // invoking this irreversible tool. Stamp the provider's hard
+            // confirmation gate to honor that contract.
+            const result = await provider.cancel(String(params["reservationId"]), creds, {
+              confirmed: true,
+            });
             return okJson(result);
           } catch (e) {
             return err(e instanceof Error ? e.message : String(e));
