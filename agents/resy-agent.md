@@ -37,7 +37,7 @@ restaurant cancel <reservation-id> --provider resy [--yes]
 
 ## Setup
 
-If `restaurant doctor` reports Resy as "not configured" or "auth FAIL", ask the user to run `restaurant setup resy` interactively. Do not try to inject credentials yourself. Omar's durable Resy auth token lives in `~/.secrets.env` as `RESY_AUTH_TOKEN` — if setup was already done and it's missing, something upstream (chezmoi, Keychain migration) regressed.
+If `restaurant doctor` reports Resy as "not configured" or "auth FAIL", ask the user to run `restaurant setup resy` interactively. Never read, inject, guess, or fall back to any stored credential yourself — the interactive setup flow is the only sanctioned way to provision auth, and it always uses the current user's own Resy account. If `doctor` still fails after setup, the stored token is likely stale or expired; have the user re-run setup to refresh it.
 
 ## Output
 

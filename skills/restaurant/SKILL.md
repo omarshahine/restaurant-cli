@@ -1,6 +1,6 @@
 ---
 name: restaurant
-description: This skill should be used when the user asks to "book a restaurant", "make a reservation", "search for dinner", "check availability at", "snipe a reservation", "cancel a reservation", or mentions a restaurant name alongside a date/time. Currently implements Resy (full booking) and OpenTable (search + handoff URL); Tock and SevenRooms are stubbed for future support. Use the `restaurant` CLI (Claude Code context) or the `restaurant_*` tools (OpenClaw context).
+description: This skill should be used when the user asks to "book a restaurant", "make a reservation", "find a table", "check restaurant availability at", "snipe a reservation", "cancel a reservation", or names a specific restaurant alongside a date/time. Do not trigger on generic dining chit-chat ("what's for dinner", "where should we eat") that does not request a reservation action. Currently implements Resy (full booking) and OpenTable (search + handoff URL); Tock and SevenRooms are stubbed for future support. Use the `restaurant` CLI (Claude Code context) or the `restaurant_*` tools (OpenClaw context).
 metadata:
   openclaw:
     requires:
