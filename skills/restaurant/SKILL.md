@@ -55,8 +55,8 @@ OpenTable cannot complete bookings via API; the `bookUrl` capability returns a d
 One-time auth per provider:
 
 ```bash
-restaurant setup resy              # CLI store only (~/.secrets.env + config.yaml)
-restaurant setup resy-openclaw     # also mirrors creds into ~/.openclaw/openclaw.json
+restaurant setup resy              # env-first: prints an export line to add to your env
+restaurant setup resy-openclaw     # also writes an env SecretRef into ~/.openclaw/openclaw.json
 restaurant doctor                  # verify config, auth, scheduler health
 ```
 
@@ -124,8 +124,8 @@ Slash commands auto-route through the router:
 
 ## Config and secrets
 
-- CLI config: `~/.config/restaurant-cli/config.yaml`
-- Secrets: `~/.secrets.env` (never macOS Keychain)
+- CLI config: `~/.config/restaurant-cli/config.yaml` (holds an env `tokenRef`, never the token value)
+- Secrets: **env-first** — the tool writes no secret file. `setup`/`auth login` print an `export KEY=...` line; you add it to your own env (e.g. `~/.secrets.env`, never macOS Keychain). The token is read from the environment at runtime.
 - OpenClaw plugin config: `~/.openclaw/openclaw.json` → `plugins.entries.restaurant-cli.config`
 
 Append `-openclaw` to any `restaurant setup <provider>` invocation to mirror the resulting credentials into the OpenClaw plugin config in addition to the CLI store — the plugin reads only from `pluginConfig`, so this bridge step is required for the OpenClaw tools to find credentials.

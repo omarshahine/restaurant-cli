@@ -8,38 +8,32 @@
 
 import { secretsFilePath } from "./secrets.js";
 
-let credentialWarningShown = false;
-
 /**
- * Reset the once-per-process guards. Test-only — lets each test start from a
- * clean slate instead of depending on call order across the file.
+ * Hand a freshly-obtained credential back to the user to store in their own
+ * environment. The tool does NOT persist it to disk — it keeps only an
+ * environment `SecretRef` in config, and reads the value from the environment
+ * at runtime. Printed to stderr (never stdout, so `--json` stays clean), with
+ * the value shown once so the user can place it in their secret manager.
  */
-export function resetWarningStateForTests(): void {
-  credentialWarningShown = false;
-  browserWarningShown.clear();
-}
-
-/**
- * Warn that the action about to run stores a long-lived bearer credential in
- * plaintext on disk. Printed once per process. Call this BEFORE prompting for
- * or writing a token/cookie.
- */
-export function warnPlaintextCredentialStorage(extra?: string): void {
-  if (credentialWarningShown) return;
-  credentialWarningShown = true;
+export function instructEnvSecret(
+  envVar: string,
+  value: string,
+  note?: string,
+): void {
+  const quoted = `'${value.replace(/'/g, `'\\''`)}'`;
   const lines = [
-    "⚠  Credential storage notice:",
-    `   This stores a long-lived bearer token/cookie in plaintext at ${secretsFilePath()}`,
-    "   (mode 0600). This is deliberate — the tool never uses the macOS Keychain",
-    "   — so the same credential works across the CLI and scheduled jobs. As an",
-    "   OpenClaw plugin it writes NO secret of its own: the plugin config holds",
-    "   an environment SecretRef and the value is read from the gateway env.",
-    "   Anyone who can read your home directory (local compromise, unencrypted",
-    "   backups, shared machines) can read the plaintext file. Treat it as a",
-    "   secret and rotate by editing it. The token is scoped to reservation",
-    "   actions on your own account.",
+    "",
+    "🔑 Credential ready — this tool does NOT write it to disk. Add it to your",
+    "   environment so the CLI and scheduled jobs can read it (shown once):",
+    "",
+    `       export ${envVar}=${quoted}`,
+    "",
+    `   Put that line in your shell's secret file (e.g. ${secretsFilePath()}, or a`,
+    "   chezmoi/age-encrypted source), then `source` it and run `restaurant doctor`",
+    "   to verify. Note: whatever file you choose holds a bearer credential in",
+    "   plaintext — keep it 0600 and out of backups/syncs you don't control.",
   ];
-  if (extra) lines.push(`   ${extra}`);
+  if (note) lines.push(`   ${note}`);
   process.stderr.write(lines.join("\n") + "\n");
 }
 
@@ -69,6 +63,14 @@ export type AutomationMechanism =
   | "tls-binary"; // shells out to a binary that impersonates a browser's TLS (Tock)
 
 const browserWarningShown = new Set<string>();
+
+/**
+ * Reset the once-per-process guards. Test-only — lets each test start from a
+ * clean slate instead of depending on call order across the file.
+ */
+export function resetWarningStateForTests(): void {
+  browserWarningShown.clear();
+}
 
 /**
  * Warn that a provider path automates a live site (no official public API),

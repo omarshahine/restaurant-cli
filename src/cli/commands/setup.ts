@@ -3,23 +3,27 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import password from "@inquirer/password";
 import { buildRegistry } from "../../providers/bootstrap.js";
-import { loadConfig, saveConfig, upsertProvider, configPath } from "../../core/config.js";
 import {
-  appendSecret,
-  secretKeyPresent,
-  secretsFilePath,
-} from "../../core/secrets.js";
+  loadConfig,
+  saveConfig,
+  upsertProvider,
+  configPath,
+} from "../../core/config.js";
+import { secretsFilePath } from "../../core/secrets.js";
 import type { Credentials, SetupPrompt } from "../../providers/types.js";
 import {
   mirrorCredentialsToOpenClaw,
   OPENCLAW_PLUGIN_ID,
 } from "../../integrations/openclaw/install.js";
-import { warnPlaintextCredentialStorage } from "../../core/warnings.js";
+import { instructEnvSecret } from "../../core/warnings.js";
 
 const KNOWN_TARGETS = ["openclaw"] as const;
 type SetupTarget = (typeof KNOWN_TARGETS)[number];
 
-function parseProviderArg(arg: string): { providerId: string; target: SetupTarget | null } {
+function parseProviderArg(arg: string): {
+  providerId: string;
+  target: SetupTarget | null;
+} {
   for (const t of KNOWN_TARGETS) {
     const suffix = `-${t}`;
     if (arg.endsWith(suffix)) {
@@ -51,8 +55,6 @@ export const setupCommand = defineCommand({
     try {
       // eslint-disable-next-line no-console
       console.log(`Setting up ${provider.displayName} (${provider.id})`);
-      // Disclose plaintext credential storage BEFORE collecting any secret.
-      warnPlaintextCredentialStorage();
       const prompts = provider.auth.setupPrompts();
       const answers: Credentials = {};
 
@@ -121,16 +123,22 @@ function mirrorToOpenClaw(providerId: string, creds: Credentials): void {
       return;
     case "ok":
       if (result.updated.length === 0 && result.removed.length === 0) {
-        log(`\n✓ OpenClaw plugin config already up-to-date (${result.configPath}).`);
+        log(
+          `\n✓ OpenClaw plugin config already up-to-date (${result.configPath}).`,
+        );
         return;
       }
       if (result.updated.length > 0) {
-        log(`\n✓ Mirrored ${result.updated.length} value(s) into ${result.configPath}:`);
+        log(
+          `\n✓ Mirrored ${result.updated.length} value(s) into ${result.configPath}:`,
+        );
         for (const k of result.updated)
           log(`  - plugins.entries.${OPENCLAW_PLUGIN_ID}.config.${k}`);
       }
       if (result.removed.length > 0) {
-        log(`\n✓ Pruned ${result.removed.length} stale key(s) from ${result.configPath}:`);
+        log(
+          `\n✓ Pruned ${result.removed.length} stale key(s) from ${result.configPath}:`,
+        );
         for (const k of result.removed)
           log(`  - plugins.entries.${OPENCLAW_PLUGIN_ID}.config.${k}`);
       }
@@ -140,11 +148,12 @@ function mirrorToOpenClaw(providerId: string, creds: Credentials): void {
 }
 
 /**
- * Persist final creds:
+ * Persist final creds (env-first — the token is NEVER written to disk):
  *   - fields NOT marked `sensitive` (email, firstName, and provider-public
  *     identifiers like Resy's shared client id) → config.yaml
- *   - the main bearer token (`authToken`) → ~/.secrets.env as
- *     `<PROVIDER_ID>_AUTH_TOKEN`, referenced by `tokenRef` in config
+ *   - the main bearer token (`authToken`) → config holds only a
+ *     `{source:"env", id:"<PROVIDER>_AUTH_TOKEN"}` `tokenRef`; the value is
+ *     handed to the user (via `instructEnvSecret`) to place in their own env.
  *
  * Classification is default-deny: anything a provider declares `sensitive`
  * (or `ephemeral`) — plus `authToken`/`password` — is kept out of the
@@ -184,25 +193,21 @@ async function persist(
     }
   }
 
+  // env-first: never persist the token to disk. Config stores only an env
+  // SecretRef; the value is handed to the user to place in their own
+  // environment (see instructEnvSecret below).
+  let envSecret: { envVar: string; value: string } | undefined;
   if (creds["authToken"]) {
     const envVar = `${providerId.toUpperCase()}_AUTH_TOKEN`;
-    if (secretKeyPresent(envVar)) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `  ${envVar} already present in ${secretsFilePath()}; leaving existing value. Edit manually to rotate.`,
-      );
-    } else {
-      appendSecret(envVar, creds["authToken"]);
-      // eslint-disable-next-line no-console
-      console.log(`  wrote ${envVar} to ${secretsFilePath()} (new shells will auto-load)`);
-    }
     patch["tokenRef"] = { source: "env", id: envVar };
+    envSecret = { envVar, value: creds["authToken"] };
   }
 
   const updated = upsertProvider(config, providerId, patch);
   saveConfig(updated);
   // eslint-disable-next-line no-console
   console.log(`\nSaved ${providerId} config to ${configPath()}`);
-  // eslint-disable-next-line no-console
-  console.log(`Run 'source ~/.secrets.env && restaurant doctor' to verify.`);
+  if (envSecret) {
+    instructEnvSecret(envSecret.envVar, envSecret.value);
+  }
 }
