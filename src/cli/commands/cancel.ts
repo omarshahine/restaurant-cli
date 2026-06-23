@@ -51,7 +51,10 @@ export const cancelCommand = defineCommand({
       }
     }
 
-    const result = await provider.cancel(args.id, creds);
+    // Reached only after the y/N gate above (or --yes). Stamp the hard
+    // confirmation flag so the provider's irreversible cancel can't fire
+    // without having passed a confirmation step.
+    const result = await provider.cancel(args.id, creds, { confirmed: true });
 
     if (!result.ok) {
       emitError(`Cancel failed: ${result.error ?? "unknown error"}`, agentArgs, {

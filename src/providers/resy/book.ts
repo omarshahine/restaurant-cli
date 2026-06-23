@@ -47,11 +47,20 @@ function pickPaymentMethodId(methods: PaymentMethod[] | undefined): number | str
  *   1. POST /3/details?config_id=...   → book_token + user.payment_methods
  *   2. POST /3/book (book_token + payment method) → resy_token (reservation id)
  *
- * The caller is responsible for having already confirmed with the user.
  * `provider.book` is the destructive call — it will succeed silently if the
- * slot is still open.
+ * slot is still open, so it enforces a hard confirmation gate in code:
+ * `r.confirmed` MUST be `true`. The CLI sets it after its y/N prompt (or
+ * `--yes`), the OpenClaw tool after its documented confirm contract. A call
+ * that omits it fails closed rather than booking a real reservation.
  */
 export async function book(r: BookRequest, creds: Credentials): Promise<BookResult> {
+  if (r.confirmed !== true) {
+    throw new ProviderError(
+      "Refusing to book: request.confirmed must be explicitly true. " +
+        "Booking is destructive and requires caller-side user confirmation.",
+      "resy",
+    );
+  }
   const client = new ResyClient(resyCredentials(creds));
 
   // Resolve a slot token: either one passed in from a prior availability

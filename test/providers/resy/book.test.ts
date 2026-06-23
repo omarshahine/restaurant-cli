@@ -21,6 +21,7 @@ describe("providers/resy/book — two-step flow", () => {
       {
         venueId: "1387",
         partySize: 2,
+        confirmed: true,
         date: "2026-05-15",
         time: "19:00",
         slotToken: "rgs://resy/1387/abc",
@@ -62,7 +63,13 @@ describe("providers/resy/book — two-step flow", () => {
       .reply(200, { resy_token: "res-tok-1930" });
 
     const result = await resyProvider.book(
-      { venueId: "1387", partySize: 2, date: "2026-05-15", time: "19:30" },
+      {
+        venueId: "1387",
+        partySize: 2,
+        confirmed: true,
+        date: "2026-05-15",
+        time: "19:30",
+      },
       { apiKey: "key", authToken: "tok" },
     );
     expect(result.ok).toBe(true);
@@ -88,7 +95,13 @@ describe("providers/resy/book — two-step flow", () => {
       });
 
     const result = await resyProvider.book(
-      { venueId: "1387", partySize: 2, date: "2026-05-15", time: "20:00" },
+      {
+        venueId: "1387",
+        partySize: 2,
+        confirmed: true,
+        date: "2026-05-15",
+        time: "20:00",
+      },
       { apiKey: "key", authToken: "tok" },
     );
     expect(result.ok).toBe(false);
@@ -105,6 +118,7 @@ describe("providers/resy/book — two-step flow", () => {
         {
           venueId: "1387",
           partySize: 2,
+          confirmed: true,
           date: "2026-05-15",
           time: "19:00",
           slotToken: "rgs://expired",
@@ -117,13 +131,17 @@ describe("providers/resy/book — two-step flow", () => {
   it("throws when the account has no payment methods on file", async () => {
     nock("https://api.resy.com")
       .post("/3/details")
-      .reply(200, { book_token: { value: "bt" }, user: { payment_methods: [] } });
+      .reply(200, {
+        book_token: { value: "bt" },
+        user: { payment_methods: [] },
+      });
 
     await expect(
       resyProvider.book(
         {
           venueId: "1387",
           partySize: 2,
+          confirmed: true,
           date: "2026-05-15",
           time: "19:00",
           slotToken: "rgs://resy/1387/abc",
@@ -141,12 +159,15 @@ describe("providers/resy/book — two-step flow", () => {
         user: { payment_methods: [{ id: 456, is_default: true }] },
       })
       .post("/3/book")
-      .reply(200, { error: { code: "RESY_FULLY_BOOKED", message: "Slot just filled" } });
+      .reply(200, {
+        error: { code: "RESY_FULLY_BOOKED", message: "Slot just filled" },
+      });
 
     const result = await resyProvider.book(
       {
         venueId: "1387",
         partySize: 2,
+        confirmed: true,
         date: "2026-05-15",
         time: "19:00",
         slotToken: "rgs://resy/1387/abc",
@@ -155,5 +176,21 @@ describe("providers/resy/book — two-step flow", () => {
     );
     expect(result.ok).toBe(false);
     expect(result.error).toContain("Slot just filled");
+  });
+
+  it("refuses to book when request.confirmed is not explicitly true", async () => {
+    // No nock mocks: the guard must fire before any network call.
+    await expect(
+      resyProvider.book(
+        {
+          venueId: "1387",
+          partySize: 2,
+          date: "2026-05-15",
+          time: "19:00",
+          slotToken: "rgs://resy/1387/abc",
+        },
+        { apiKey: "key", authToken: "tok" },
+      ),
+    ).rejects.toThrow(/confirmed must be explicitly true/);
   });
 });
