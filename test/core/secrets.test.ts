@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveSecret, setOpenClawSecret, readOpenClawSecret } from "../../src/core/secrets.js";
+import { resolveSecret } from "../../src/core/secrets.js";
 
 describe("core/secrets resolveSecret", () => {
   let tmpHome: string;
@@ -40,7 +40,9 @@ describe("core/secrets resolveSecret", () => {
   it("resolves source:env SecretRef", () => {
     process.env.RESTAURANT_CLI_ENV_REF = "env-ref-value";
     try {
-      expect(resolveSecret({ source: "env", id: "RESTAURANT_CLI_ENV_REF" })).toBe("env-ref-value");
+      expect(
+        resolveSecret({ source: "env", id: "RESTAURANT_CLI_ENV_REF" }),
+      ).toBe("env-ref-value");
     } finally {
       delete process.env.RESTAURANT_CLI_ENV_REF;
     }
@@ -59,7 +61,9 @@ describe("core/secrets resolveSecret", () => {
       writeFileSync(
         join(dir, "secrets.json"),
         JSON.stringify({
-          plugins: { "restaurant-cli": { resy_authToken: "shared-store-value" } },
+          plugins: {
+            "restaurant-cli": { resy_authToken: "shared-store-value" },
+          },
         }),
       );
       expect(
@@ -99,7 +103,9 @@ describe("core/secrets resolveSecret", () => {
       mkdirSync(dir, { recursive: true });
       writeFileSync(
         join(dir, "secrets.json"),
-        JSON.stringify({ plugins: { "restaurant-cli": { resy_authToken: 42 } } }),
+        JSON.stringify({
+          plugins: { "restaurant-cli": { resy_authToken: 42 } },
+        }),
       );
       expect(
         resolveSecret({
@@ -132,7 +138,10 @@ describe("core/secrets resolveSecret", () => {
       // the whole parsed secrets doc.
       const dir = join(tmpHome, ".openclaw");
       mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "secrets.json"), JSON.stringify({ "": "empty-key-value" }));
+      writeFileSync(
+        join(dir, "secrets.json"),
+        JSON.stringify({ "": "empty-key-value" }),
+      );
       expect(
         resolveSecret({ source: "file", provider: "secrets", id: "/" }),
       ).toBe("empty-key-value");
@@ -151,34 +160,28 @@ describe("core/secrets resolveSecret", () => {
       ).toBeUndefined();
     });
 
-    it("round-trips: setOpenClawSecret writes a value resolveSecret can read", () => {
-      // This is the exact contract the OpenClaw mirror relies on — it writes
-      // via setOpenClawSecret and the plugin reads via resolveSecret(ref).
-      const pointer = "/restaurant-cli/resy_authToken";
-      expect(setOpenClawSecret(pointer, "tok_roundtrip")).toBe(true); // new
-      expect(readOpenClawSecret(pointer)).toBe("tok_roundtrip");
+    it("legacy file-ref still resolves from a pre-existing secrets.json", () => {
+      // The plugin no longer WRITES this store (the mirror now persists
+      // env-refs), but installs created by older versions carry file-refs, so
+      // the read path must keep resolving them.
+      mkdirSync(join(tmpHome, ".openclaw"), { recursive: true });
+      writeFileSync(
+        join(tmpHome, ".openclaw", "secrets.json"),
+        JSON.stringify({ "restaurant-cli": { resy_authToken: "legacy_tok" } }),
+      );
       expect(
-        resolveSecret({ source: "file", provider: "secrets", id: pointer }),
-      ).toBe("tok_roundtrip");
-      // Re-writing the same value reports no change; a new value rotates it.
-      expect(setOpenClawSecret(pointer, "tok_roundtrip")).toBe(false);
-      expect(setOpenClawSecret(pointer, "tok_rotated")).toBe(true);
-      expect(
-        resolveSecret({ source: "file", provider: "secrets", id: pointer }),
-      ).toBe("tok_rotated");
-    });
-
-    it("setOpenClawSecret preserves other keys in the store", () => {
-      setOpenClawSecret("/restaurant-cli/resy_authToken", "a");
-      setOpenClawSecret("/restaurant-cli/opentable_sessionCookies", "b");
-      setOpenClawSecret("/other-plugin/key", "c");
-      expect(readOpenClawSecret("/restaurant-cli/resy_authToken")).toBe("a");
-      expect(readOpenClawSecret("/restaurant-cli/opentable_sessionCookies")).toBe("b");
-      expect(readOpenClawSecret("/other-plugin/key")).toBe("c");
+        resolveSecret({
+          source: "file",
+          provider: "secrets",
+          id: "/restaurant-cli/resy_authToken",
+        }),
+      ).toBe("legacy_tok");
     });
   });
 
   it("throws on source:exec (keychain unsupported)", () => {
-    expect(() => resolveSecret({ source: "exec", id: "anything" })).toThrow(/not supported/);
+    expect(() => resolveSecret({ source: "exec", id: "anything" })).toThrow(
+      /not supported/,
+    );
   });
 });

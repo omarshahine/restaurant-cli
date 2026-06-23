@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.25] — 2026-06-23
+
+### Security — eliminate the OpenClaw plaintext secret store
+The v0.1.24 re-audit kept flagging plaintext credential storage High. The
+OpenClaw mirror was the main offender: it wrote each token into
+`~/.openclaw/secrets.json` and stored a file-backed SecretRef
+(`{source:"file", provider:"secrets"}`) pointing at that plaintext store. That
+store is now eliminated.
+
+- **OpenClaw mirror now persists environment SecretRefs.** Sensitive values are
+  no longer written to disk by the mirror. `plugins.entries.restaurant-cli.config`
+  holds `{source:"env", id:"RESY_AUTH_TOKEN"}` refs that resolve at runtime from
+  the gateway environment — exactly the env vars the manifest already declares
+  under `metadata.openclaw.requires.env`. **The plugin writes no secret store of
+  its own; `~/.openclaw/secrets.json` is never created.**
+- Removed the now-unused plaintext writer/reader (`setOpenClawSecret`,
+  `readOpenClawSecret`). `resolveSecret` keeps the `provider:"secrets"` read
+  path so **legacy installs** carrying a file-ref still resolve.
+- Updated the plaintext-storage disclosure (`warnPlaintextCredentialStorage`)
+  and README to state the OpenClaw path stores no secret of its own.
+- Standalone CLI behavior is unchanged: it still reads `~/.secrets.env` +
+  `config.yaml`. Added an end-to-end test that the env-ref resolves from the
+  gateway env and no `secrets.json` is written.
+
 ## [0.1.24] — 2026-06-23
 
 ### Security / defense-in-depth

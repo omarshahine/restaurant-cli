@@ -16,47 +16,66 @@
  * no business in OpenClaw config. Stale `<providerId>_*` keys from older
  * setup runs are pruned to keep the config in sync with the current schema.
  *
- * Secret handling (matches the parcel / travel-hub / easypost plugins):
- * sensitive values (auth tokens, session cookies) are NOT inlined into
- * `openclaw.json`. They are written once into the OpenClaw shared secret
- * store (`~/.openclaw/secrets.json`) and the plugin config holds only a
- * `{source:"file", provider:"secrets", id:"/restaurant-cli/<key>"}`
- * SecretRef pointing there. The plugin's `credsFor()` → `resolveSecret`
- * already resolves that ref. Non-secret fields (public apiKey, email) stay
- * inline. This keeps a token in exactly one plaintext location instead of
- * replicating it across config files. Standalone CLI use is unaffected —
- * it still reads `~/.secrets.env` + `config.yaml` and never touches this
- * path.
+ * Secret handling: sensitive values (auth tokens, session cookies) are NEVER
+ * written to disk by this mirror and NEVER inlined into `openclaw.json`. The
+ * plugin config holds only an environment SecretRef —
+ * `{source:"env", id:"RESY_AUTH_TOKEN"}` — that resolves at runtime from the
+ * gateway environment. Those env vars are exactly the ones the plugin manifest
+ * already declares under `metadata.openclaw.requires.env`, so the gateway is
+ * expected to provide them (for this user they come from the chezmoi+age
+ * encrypted `~/.secrets.env`, which is encrypted at rest). This means the
+ * plugin keeps no plaintext credential copy of its own — eliminating the
+ * `~/.openclaw/secrets.json` plaintext store the security audit flagged.
+ * Non-secret fields (public apiKey, email) stay inline. Standalone CLI use is
+ * unaffected — it reads `~/.secrets.env` + `config.yaml` and never touches this
+ * path. (Legacy installs that still carry `{source:"file", provider:"secrets"}`
+ * refs keep working: `resolveSecret` retains the read path for them.)
  *
  * Fails loudly if the plugin isn't registered yet (user forgot to run
  * `openclaw plugins install --link <repo>` first). Idempotent: running
  * again only writes if something actually changed.
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  unlinkSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SecretRef } from "../../core/types.js";
-import { setOpenClawSecret } from "../../core/secrets.js";
+
+/**
+ * Convert a credential field base-name to the SCREAMING_SNAKE env-var suffix
+ * the manifest and CLI use (`authToken` → `AUTH_TOKEN`, `sessionCookies` →
+ * `SESSION_COOKIES`, `cvc` → `CVC`).
+ */
+function envVarName(providerId: string, baseKey: string): string {
+  const suffix = baseKey.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase();
+  return `${providerId.toUpperCase()}_${suffix}`;
+}
 
 export const OPENCLAW_PLUGIN_ID = "restaurant-cli";
 
 /**
  * Credential field base-names (un-prefixed) that must never be stored inline
- * in `openclaw.json`. These route to the shared secret store as SecretRefs.
+ * in `openclaw.json`. These are persisted as environment SecretRefs that
+ * resolve from the gateway env at runtime — no value is written to disk.
  * Resy's `apiKey` is intentionally absent — it is a public client key.
  */
-export const SENSITIVE_CRED_KEYS = new Set(["authToken", "sessionCookies", "cvc", "token"]);
+export const SENSITIVE_CRED_KEYS = new Set([
+  "authToken",
+  "sessionCookies",
+  "cvc",
+  "token",
+]);
 // Note: `password` is intentionally NOT here. It is a hard drop (never stored
 // anywhere) via the early-continue guard in the write loop — it's an ephemeral
 // login input, not a durable credential. Adding it to this set would be
 // contradictory: the guard fires first, so it would have no effect.
-
-/** JSON pointer into ~/.openclaw/secrets.json for a prefixed config key. */
-function secretPointer(prefixedKey: string): string {
-  return `/${OPENCLAW_PLUGIN_ID}/${prefixedKey}`;
-}
 
 export type MirrorStatus =
   | { status: "ok"; updated: string[]; removed: string[]; configPath: string }
@@ -66,7 +85,10 @@ export type MirrorStatus =
 interface OpenClawConfig {
   plugins?: {
     allow?: string[];
-    entries?: Record<string, { enabled?: boolean; config?: Record<string, unknown> }>;
+    entries?: Record<
+      string,
+      { enabled?: boolean; config?: Record<string, unknown> }
+    >;
   };
 }
 
@@ -119,7 +141,10 @@ export function mirrorCredentialsToOpenClaw(
 
   config.plugins ??= {};
   config.plugins.entries ??= {};
-  const entry = (config.plugins.entries[OPENCLAW_PLUGIN_ID] ??= { enabled: true, config: {} });
+  const entry = (config.plugins.entries[OPENCLAW_PLUGIN_ID] ??= {
+    enabled: true,
+    config: {},
+  });
   entry.enabled = true;
   entry.config ??= {};
 
@@ -134,13 +159,12 @@ export function mirrorCredentialsToOpenClaw(
     if (allowedKeys && !allowedKeys.has(key)) continue;
 
     if (sensitiveKeys.has(k)) {
-      // Sensitive: store the value once in ~/.openclaw/secrets.json and put
-      // only a SecretRef pointer in the plugin config. Never inline.
-      const pointer = secretPointer(key);
-      const valueChanged = setOpenClawSecret(pointer, v);
-      const ref: SecretRef = { source: "file", provider: "secrets", id: pointer };
-      if (valueChanged || !isMatchingRef(entry.config[key], ref)) {
-        // Replaces any prior inline plaintext value with the pointer.
+      // Sensitive: never persist the value. Write an environment SecretRef that
+      // resolves at runtime from the gateway env var the manifest already
+      // requires (e.g. RESY_AUTH_TOKEN) — no plaintext copy on disk anywhere.
+      const ref: SecretRef = { source: "env", id: envVarName(providerId, k) };
+      if (!isMatchingRef(entry.config[key], ref)) {
+        // Replaces any prior inline plaintext value or legacy file-ref.
         entry.config[key] = ref;
         updated.push(key);
       }
@@ -169,7 +193,9 @@ export function mirrorCredentialsToOpenClaw(
     // `.bak` copy: prior versions did, and those backups preserved inline
     // plaintext secrets on disk indefinitely (flagged by the security
     // audit). openclaw.json now holds only SecretRefs + non-secret fields.
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", {
+      mode: 0o600,
+    });
     // Clean up secret-bearing backups left by older versions of this mirror.
     // Scoped to the write path so an idempotent no-op call doesn't scan the
     // directory; the first run that converts an inline secret to a ref (always

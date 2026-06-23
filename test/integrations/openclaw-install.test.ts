@@ -15,6 +15,8 @@ import {
   openClawConfigPath,
   OPENCLAW_PLUGIN_ID,
 } from "../../src/integrations/openclaw/install.js";
+import { resolveSecret } from "../../src/core/secrets.js";
+import type { SecretRef } from "../../src/core/types.js";
 
 describe("integrations/openclaw/install", () => {
   let workDir: string;
@@ -41,7 +43,10 @@ describe("integrations/openclaw/install", () => {
   }
 
   function readConfig(): Record<string, unknown> {
-    return JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+    return JSON.parse(readFileSync(configPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
   }
 
   function readSecrets(): Record<string, unknown> {
@@ -50,9 +55,16 @@ describe("integrations/openclaw/install", () => {
     return JSON.parse(readFileSync(p, "utf8")) as Record<string, unknown>;
   }
 
-  // The SecretRef the mirror writes into plugin config for a sensitive key.
+  // The SecretRef the mirror writes into plugin config for a sensitive key:
+  // an env-ref pointing at the manifest-required gateway env var (e.g.
+  // resy_authToken -> RESY_AUTH_TOKEN). No value is persisted to disk.
   function ref(prefixedKey: string) {
-    return { source: "file", provider: "secrets", id: `/${OPENCLAW_PLUGIN_ID}/${prefixedKey}` };
+    const [providerId, ...rest] = prefixedKey.split("_");
+    const suffix = rest
+      .join("_")
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .toUpperCase();
+    return { source: "env", id: `${providerId!.toUpperCase()}_${suffix}` };
   }
 
   it("returns 'not-installed' when OpenClaw config is missing", () => {
@@ -90,13 +102,13 @@ describe("integrations/openclaw/install", () => {
     const cfg = readConfig();
     const entry = (cfg["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
     expect(entry.enabled).toBe(true);
-    // Non-secret apiKey stays inline; sensitive authToken becomes a SecretRef
-    // pointer and the value lands in the shared secret store — never inline.
+    // Non-secret apiKey stays inline; sensitive authToken becomes an env
+    // SecretRef — the value is never written to disk anywhere.
     expect(entry.config).toEqual({
       resy_apiKey: "pk_123",
       resy_authToken: ref("resy_authToken"),
     });
-    expect(readSecrets()).toEqual({ "restaurant-cli": { resy_authToken: "tok_456" } });
+    expect(readSecrets()).toEqual({}); // no plaintext secret store is created
     expect(JSON.stringify(cfg)).not.toContain("tok_456");
   });
 
@@ -117,7 +129,10 @@ describe("integrations/openclaw/install", () => {
     expect(result.status).toBe("ok");
     if (result.status !== "ok") return;
     const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
-    expect(Object.keys(entry.config).sort()).toEqual(["resy_apiKey", "resy_authToken"]);
+    expect(Object.keys(entry.config).sort()).toEqual([
+      "resy_apiKey",
+      "resy_authToken",
+    ]);
     expect(entry.config).not.toHaveProperty("resy_email");
     expect(entry.config).not.toHaveProperty("resy_firstName");
   });
@@ -156,8 +171,9 @@ describe("integrations/openclaw/install", () => {
       resy_authToken: ref("resy_authToken"),
       opentable_sessionId: "keep_me",
     });
-    // The rotated value replaced the old inline plaintext in the store.
-    expect(readSecrets()).toEqual({ "restaurant-cli": { resy_authToken: "new_tok" } });
+    // The env-ref replaced the old inline plaintext; nothing is written to disk.
+    expect(readSecrets()).toEqual({});
+    expect(JSON.stringify(readConfig())).not.toContain("new_tok");
   });
 
   it("skips empty values and the reserved 'password' field", () => {
@@ -179,7 +195,8 @@ describe("integrations/openclaw/install", () => {
     if (result.status !== "ok") return;
     const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
     expect(entry.config).toEqual({ resy_authToken: ref("resy_authToken") });
-    expect(readSecrets()).toEqual({ "restaurant-cli": { resy_authToken: "tok_456" } });
+    expect(readSecrets()).toEqual({}); // value lives only in env, never on disk
+    expect(JSON.stringify(readConfig())).not.toContain("tok_456");
   });
 
   it("creates no secret store when only non-sensitive keys are mirrored", () => {
@@ -228,7 +245,11 @@ describe("integrations/openclaw/install", () => {
       },
     });
 
-    mirrorCredentialsToOpenClaw("resy", { authToken: "tok" }, { allowedKeys: RESY_KEYS });
+    mirrorCredentialsToOpenClaw(
+      "resy",
+      { authToken: "tok" },
+      { allowedKeys: RESY_KEYS },
+    );
 
     const cfg = readConfig() as any;
     expect(cfg.plugins.entries["other-plugin"]).toEqual({
@@ -240,10 +261,18 @@ describe("integrations/openclaw/install", () => {
   it("never leaves a secret-bearing backup, and purges legacy ones", () => {
     writeConfig({ plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} } });
     // Simulate a backup left by an older version that inlined a plaintext token.
-    const legacyBackup = join(workDir, ".openclaw", "openclaw.json.bak.restaurant-12345");
+    const legacyBackup = join(
+      workDir,
+      ".openclaw",
+      "openclaw.json.bak.restaurant-12345",
+    );
     writeFileSync(legacyBackup, JSON.stringify({ leaked: "old_secret_tok" }));
 
-    mirrorCredentialsToOpenClaw("resy", { authToken: "tok" }, { allowedKeys: RESY_KEYS });
+    mirrorCredentialsToOpenClaw(
+      "resy",
+      { authToken: "tok" },
+      { allowedKeys: RESY_KEYS },
+    );
 
     const backups = readdirSync(join(workDir, ".openclaw")).filter((f) =>
       f.startsWith("openclaw.json.bak.restaurant-"),
@@ -267,8 +296,35 @@ describe("integrations/openclaw/install", () => {
     if (result.status !== "ok") return;
     const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
     expect(entry.config.resy_authToken).toEqual(ref("resy_authToken"));
-    expect(readSecrets()).toEqual({ "restaurant-cli": { resy_authToken: "tok" } });
+    expect(readSecrets()).toEqual({}); // env-ref only; no value on disk
     expect(entry.config).not.toHaveProperty("resy_email");
+  });
+
+  it("writes an env-ref that resolveSecret reads back from the gateway env", () => {
+    writeConfig({ plugins: { allow: [OPENCLAW_PLUGIN_ID], entries: {} } });
+
+    const result = mirrorCredentialsToOpenClaw(
+      "resy",
+      { authToken: "tok_from_setup" },
+      { allowedKeys: RESY_KEYS },
+    );
+    expect(result.status).toBe("ok");
+
+    const entry = (readConfig()["plugins"] as any).entries[OPENCLAW_PLUGIN_ID];
+    const stored = entry.config.resy_authToken as SecretRef;
+    expect(stored).toEqual({ source: "env", id: "RESY_AUTH_TOKEN" });
+
+    // The gateway supplies the value via the manifest-required env var; the
+    // ref resolves to it with no plaintext file involved.
+    const prev = process.env["RESY_AUTH_TOKEN"];
+    process.env["RESY_AUTH_TOKEN"] = "tok_from_gateway_env";
+    try {
+      expect(resolveSecret(stored)).toBe("tok_from_gateway_env");
+    } finally {
+      if (prev === undefined) delete process.env["RESY_AUTH_TOKEN"];
+      else process.env["RESY_AUTH_TOKEN"] = prev;
+    }
+    expect(existsSync(join(workDir, ".openclaw", "secrets.json"))).toBe(false);
   });
 
   it("openClawConfigPath points at ~/.openclaw/openclaw.json", () => {
