@@ -28,3 +28,5 @@ After queuing, tell the user:
 - `restaurant jobs logs <job-id>` to see the fire-time output (available after the job runs)
 
 Under the hood, the CLI pipes the job to POSIX `at` and writes a bash wrapper that sources `~/.secrets.env` at fire time so the booking command has access to `RESY_AUTH_TOKEN`.
+
+> **Heads up — deferred credential access.** A snipe is an *unattended* booking: the wrapper loads your provider tokens and fires the reservation later, with no further confirmation from you. Tell the user this when they queue one, and remind them they can back out any time with `restaurant jobs cancel <job-id>`. Only queue snipes the user has explicitly authorized.

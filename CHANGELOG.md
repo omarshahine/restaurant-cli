@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.23] — 2026-06-23
+
+### Security / transparency
+Clears the remaining honestly-fixable findings from the ClawHub v0.1.22 audit.
+(Structural findings — anti-bot automation for OpenTable/Tock, DevTools token
+extraction for Resy which has no public OAuth, and live state-changing bookings
+— are intentional product behavior and left intact.)
+
+- **Removed personal-credential disclosure.** The Resy agent no longer names a
+  specific operator's durable auth token or its on-disk location, and no longer
+  implies a stored token may be used as fallback auth. It now instructs the
+  agent to never read/inject/guess credentials and to always defer to the
+  interactive `restaurant setup resy` flow, which uses the current user's own
+  account. (Audit's highest-confidence cluster — flagged 4×.)
+- **Default-deny secret classification in `setup`.** `persist()` now decides
+  what may be written to plaintext `config.yaml` from each provider's declared
+  `sensitive`/`ephemeral` flags rather than a fixed two-key denylist; an
+  unrecognized sensitive field is skipped with a warning, never written.
+- **Tightened skill trigger.** Dropped the over-broad "search for dinner"
+  phrase and added an explicit "don't trigger on generic dining chit-chat"
+  guard, so the skill activates only on real reservation intent.
+- **Unattended-booking warning in the snipe command doc** so the agent flags
+  deferred credential access when queuing a snipe.
+
 ## [0.1.22] — 2026-06-11
 
 ### Security / transparency

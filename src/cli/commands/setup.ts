@@ -9,7 +9,7 @@ import {
   secretKeyPresent,
   secretsFilePath,
 } from "../../core/secrets.js";
-import type { Credentials } from "../../providers/types.js";
+import type { Credentials, SetupPrompt } from "../../providers/types.js";
 import {
   mirrorCredentialsToOpenClaw,
   OPENCLAW_PLUGIN_ID,
@@ -89,7 +89,7 @@ export const setupCommand = defineCommand({
         }
       }
 
-      await persist(provider.id, finalCreds);
+      await persist(provider.id, finalCreds, prompts);
 
       if (target === "openclaw") {
         mirrorToOpenClaw(provider.id, finalCreds);
@@ -141,17 +141,47 @@ function mirrorToOpenClaw(providerId: string, creds: Credentials): void {
 
 /**
  * Persist final creds:
- *   - non-secret fields (email, apiKey, firstName, etc.) → config.yaml
+ *   - fields NOT marked `sensitive` (email, firstName, and provider-public
+ *     identifiers like Resy's shared client id) → config.yaml
  *   - the main bearer token (`authToken`) → ~/.secrets.env as
  *     `<PROVIDER_ID>_AUTH_TOKEN`, referenced by `tokenRef` in config
+ *
+ * Classification is default-deny: anything a provider declares `sensitive`
+ * (or `ephemeral`) — plus `authToken`/`password` — is kept out of the
+ * plaintext config.yaml. An unrecognized sensitive field is skipped with a
+ * warning rather than silently written to plaintext.
  */
-async function persist(providerId: string, creds: Credentials): Promise<void> {
+async function persist(
+  providerId: string,
+  creds: Credentials,
+  prompts: SetupPrompt[] = [],
+): Promise<void> {
   const config = loadConfig();
   const patch: Record<string, unknown> = {};
 
+  // Keys that must never land in plaintext config.yaml.
+  const secretKeys = new Set<string>(["authToken", "password"]);
+  for (const p of prompts) {
+    if (p.sensitive || p.ephemeral) secretKeys.add(p.id);
+  }
+
   for (const [k, v] of Object.entries(creds)) {
-    if (k === "authToken" || k === "password") continue;
+    if (secretKeys.has(k)) continue;
     if (typeof v === "string" && v) patch[k] = v;
+  }
+
+  // Surface any sensitive field we deliberately did NOT persist (other than
+  // the bearer token, handled below, and the ephemeral password) so it never
+  // silently disappears into nowhere or into plaintext config.
+  for (const [k, v] of Object.entries(creds)) {
+    if (!secretKeys.has(k) || k === "authToken" || k === "password") continue;
+    if (typeof v === "string" && v) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `  ⚠  '${k}' is marked sensitive and was NOT written to config.yaml. ` +
+          `Store it in ${secretsFilePath()} manually if the provider needs it.`,
+      );
+    }
   }
 
   if (creds["authToken"]) {
