@@ -30,13 +30,14 @@ export function warnPlaintextCredentialStorage(extra?: string): void {
   const lines = [
     "⚠  Credential storage notice:",
     `   This stores a long-lived bearer token/cookie in plaintext at ${secretsFilePath()}`,
-    "   (and ~/.openclaw/secrets.json when used as an OpenClaw plugin). This is",
-    "   deliberate — the tool never uses the macOS Keychain — so the same",
-    "   credential works across the CLI, scheduled jobs, and the gateway.",
+    "   (mode 0600). This is deliberate — the tool never uses the macOS Keychain",
+    "   — so the same credential works across the CLI and scheduled jobs. As an",
+    "   OpenClaw plugin it writes NO secret of its own: the plugin config holds",
+    "   an environment SecretRef and the value is read from the gateway env.",
     "   Anyone who can read your home directory (local compromise, unencrypted",
-    "   backups, shared machines) can read it. Treat those files as secrets and",
-    "   rotate by editing them. The token is scoped to reservation actions on",
-    "   your own account.",
+    "   backups, shared machines) can read the plaintext file. Treat it as a",
+    "   secret and rotate by editing it. The token is scoped to reservation",
+    "   actions on your own account.",
   ];
   if (extra) lines.push(`   ${extra}`);
   process.stderr.write(lines.join("\n") + "\n");
@@ -75,7 +76,10 @@ const browserWarningShown = new Set<string>();
  * to the actual mechanism so it never misrepresents what runs on the user's
  * machine. Printed once per site per process.
  */
-export function warnBrowserAutomation(site: string, mechanism: AutomationMechanism): void {
+export function warnBrowserAutomation(
+  site: string,
+  mechanism: AutomationMechanism,
+): void {
   if (browserWarningShown.has(site)) return;
   browserWarningShown.add(site);
   const detail =
