@@ -1,7 +1,8 @@
 import type { Provider } from "../types.js";
+import { requireSiteAutomationEnabled } from "../../core/gates.js";
 import { tockSetupPrompts, validateTock } from "./auth.js";
-import { searchVenues } from "./search.js";
-import { getAvailability } from "./availability.js";
+import { searchVenues as searchVenuesImpl } from "./search.js";
+import { getAvailability as getAvailabilityImpl } from "./availability.js";
 import { book } from "./book.js";
 import { cancel } from "./cancel.js";
 import { listReservations } from "./list.js";
@@ -44,8 +45,16 @@ export const tockProvider: Provider = {
     validate: validateTock,
     setupPrompts: tockSetupPrompts,
   },
-  searchVenues,
-  getAvailability,
+  async searchVenues(q, creds) {
+    // Shells out to the trg binary which impersonates Chrome's TLS to clear
+    // Cloudflare — live-site automation. Off by default.
+    requireSiteAutomationEnabled("Tock search");
+    return searchVenuesImpl(q, creds);
+  },
+  async getAvailability(q, creds) {
+    requireSiteAutomationEnabled("Tock availability lookup");
+    return getAvailabilityImpl(q, creds);
+  },
   book,
   cancel,
   listReservations,

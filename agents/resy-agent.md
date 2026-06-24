@@ -31,7 +31,7 @@ restaurant cancel <reservation-id> --provider resy [--yes]
 ## Resy quirks worth remembering
 
 - Resy uses a two-step flow internally: availability returns a `slotToken` that must be passed back to `book`. The CLI handles this; you never see it.
-- High-demand venues release slots at precise times (usually 9 or 10 AM local). Use `snipe` with `--release-at` in the local timezone.
+- High-demand venues release slots at precise times (usually 9 or 10 AM local). Use `snipe` with `--release-at` in the local timezone. **Sniping is off by default** — it requires the user to set `RESTAURANT_CLI_ENABLE_SNIPE=1` (unattended booking). If `snipe` errors with "off by default", relay that to the user and let them enable it; don't set the env var yourself. `snipe --dry-run` previews without the flag.
 - Party size above a venue's cap returns "no availability" rather than an explicit error.
 - If `/3/details` returns "invalid configuration ID", the Resy API has drifted again — inspect recent commits / worklog before retrying.
 

@@ -9,7 +9,8 @@ import type {
   Slot,
 } from "../types.js";
 import { CapabilityError, ProviderError } from "../../core/errors.js";
-import { searchVenues } from "./search.js";
+import { requireSiteAutomationEnabled } from "../../core/gates.js";
+import { searchVenues as searchVenuesImpl } from "./search.js";
 import { buildBookingUrl } from "./deeplink.js";
 import {
   getAvailability as getAvailabilityViaBrowser,
@@ -55,6 +56,9 @@ async function getAvailabilityDispatch(
   q: AvailabilityQuery,
   creds: Credentials,
 ): Promise<Slot[]> {
+  // OpenTable has no official API — both the GraphQL persisted-query path and
+  // the browser fallback automate the live site. Off by default.
+  requireSiteAutomationEnabled("OpenTable availability lookup");
   const mode = getMode();
   if (mode === "api") {
     return getAvailabilityViaApi(q, creds);
@@ -74,7 +78,9 @@ async function getAvailabilityDispatch(
   } catch (err) {
     if (process.env["RESTAURANT_CLI_DEBUG"]) {
       // eslint-disable-next-line no-console
-      console.error(`[opentable] api path failed, falling back to browser: ${(err as Error).message}`);
+      console.error(
+        `[opentable] api path failed, falling back to browser: ${(err as Error).message}`,
+      );
     }
     // Fall back on the two failure modes Akamai actually produces:
     //   - ProviderError: a non-200 we converted (typically 403)
@@ -119,13 +125,23 @@ export const openTableProvider: Provider = {
     },
     setupPrompts: () => [],
   },
-  searchVenues,
+  async searchVenues(q, creds) {
+    // Browser-driven autocomplete on opentable.com — live-site automation.
+    requireSiteAutomationEnabled("OpenTable search");
+    return searchVenuesImpl(q, creds);
+  },
   getAvailability: getAvailabilityDispatch,
   async book(_r: BookRequest, _creds: Credentials): Promise<BookResult> {
-    throw new CapabilityError("opentable", "book (use getBookingUrl for hand-off)");
+    throw new CapabilityError(
+      "opentable",
+      "book (use getBookingUrl for hand-off)",
+    );
   },
   async cancel(): Promise<never> {
-    throw new CapabilityError("opentable", "cancel (browser automation milestone)");
+    throw new CapabilityError(
+      "opentable",
+      "cancel (browser automation milestone)",
+    );
   },
   async listReservations(): Promise<Reservation[]> {
     throw new CapabilityError("opentable", "list (requires logged-in session)");

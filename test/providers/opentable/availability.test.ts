@@ -45,8 +45,16 @@ describe("providers/opentable/availability — __NEXT_DATA__ parser", () => {
             availabilityData: {
               availability: {
                 times: [
-                  { time: "19:00", slotHash: "slot-a", attributes: { category: "Dining Room" } },
-                  { time: "19:30", slotHash: "slot-b", attributes: { diningArea: "Patio" } },
+                  {
+                    time: "19:00",
+                    slotHash: "slot-a",
+                    attributes: { category: "Dining Room" },
+                  },
+                  {
+                    time: "19:30",
+                    slotHash: "slot-b",
+                    attributes: { diningArea: "Patio" },
+                  },
                   { time: "20:00", slotHash: "slot-c", isSoldOut: true },
                 ],
               },
@@ -98,7 +106,11 @@ describe("providers/opentable/availability — __NEXT_DATA__ parser", () => {
     // walks the tree looking for an array whose first element smells like
     // a slot. This keeps the scraper alive across minor schema drift.
     const nd = {
-      props: { pageProps: { whatever: { deep: { nest: [{ time: "17:00", slotHash: "a" }] } } } },
+      props: {
+        pageProps: {
+          whatever: { deep: { nest: [{ time: "17:00", slotHash: "a" }] } },
+        },
+      },
     };
     expect(findSlotsInNextData(nd)).toHaveLength(1);
     const slots = parseNextDataAvailabilityResponse(nd, {
@@ -110,8 +122,19 @@ describe("providers/opentable/availability — __NEXT_DATA__ parser", () => {
   });
 
   it("returns [] gracefully when nothing matches", () => {
-    expect(parseNextDataAvailabilityResponse({ props: {} }, { venueId: "1", date: "2026-05-01", partySize: 2 })).toEqual([]);
-    expect(parseNextDataAvailabilityResponse(null, { venueId: "1", date: "2026-05-01", partySize: 2 })).toEqual([]);
+    expect(
+      parseNextDataAvailabilityResponse(
+        { props: {} },
+        { venueId: "1", date: "2026-05-01", partySize: 2 },
+      ),
+    ).toEqual([]);
+    expect(
+      parseNextDataAvailabilityResponse(null, {
+        venueId: "1",
+        date: "2026-05-01",
+        partySize: 2,
+      }),
+    ).toEqual([]);
   });
 
   it("honors `available: false` as an explicit drop signal", () => {
@@ -143,5 +166,26 @@ describe("providers/opentable/availability — Provider gating", () => {
     // (api | browser | auto). Default `auto` tries the GQL persisted-query
     // path first, falls back to the patchright scrape on Akamai 403.
     expect(openTableProvider.capabilities.availability).toBe(true);
+  });
+
+  it("search + availability are OFF by default (site-automation opt-in required)", async () => {
+    const prev = process.env["RESTAURANT_CLI_ENABLE_SITE_AUTOMATION"];
+    delete process.env["RESTAURANT_CLI_ENABLE_SITE_AUTOMATION"];
+    try {
+      // Both gated paths fail closed before any network call.
+      await expect(
+        openTableProvider.searchVenues({ query: "x" }, {}),
+      ).rejects.toThrow(/off by default/i);
+      await expect(
+        openTableProvider.getAvailability(
+          { venueId: "1", date: "2026-05-01", partySize: 2 },
+          {},
+        ),
+      ).rejects.toThrow(/off by default/i);
+    } finally {
+      if (prev === undefined)
+        delete process.env["RESTAURANT_CLI_ENABLE_SITE_AUTOMATION"];
+      else process.env["RESTAURANT_CLI_ENABLE_SITE_AUTOMATION"] = prev;
+    }
   });
 });
