@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.27] — 2026-06-24
+
+### Security — opt-in gates for the highest-risk capabilities
+The higher-risk capability groups are now **off by default** and fail closed
+with an actionable, consent-oriented message until the user explicitly opts in.
+No features are removed — they're disabled-by-default behind an env flag.
+
+- **Scheduled sniping requires `RESTAURANT_CLI_ENABLE_SNIPE=1`.** Snipe is an
+  *unattended* booking (fires later, loads the token at run time, books with no
+  further confirmation), so `restaurant snipe` / `restaurant_schedule_snipe`
+  now refuse to queue unless the flag is set. `snipe --dry-run` still previews
+  without it.
+- **OpenTable + Tock live-site automation requires `RESTAURANT_CLI_ENABLE_SITE_AUTOMATION=1`.**
+  Their `search`/`availability` paths drive a live site with no official API
+  (scraping / anti-bot bypass, possible ToS violation), so they're gated at the
+  provider boundary. Resy (documented-token API) and OpenTable `bookUrl`
+  hand-off are **not** gated.
+- New `core/gates.ts` centralizes the opt-in contract (`requireSnipeEnabled`,
+  `requireSiteAutomationEnabled`); +6 gate tests and a provider-gating test.
+- Documented the flags in README, SKILL, the snipe command, and the
+  OpenTable/Resy agents (agents are told to relay the opt-in to the user, never
+  set it themselves).
+
 ## [0.1.26] — 2026-06-23
 
 ### Security — env-first credentials (the CLI writes no secret file)

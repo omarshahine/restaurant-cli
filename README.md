@@ -111,8 +111,10 @@ Env-var floors (override flags):
 |---|---|
 | `RESTAURANT_CLI_AGENT=1` | Every command behaves as if `--agent` were passed |
 | `RESTAURANT_CLI_DRY_RUN=1` | Every destructive command runs as `--dry-run` |
-| `RESTAURANT_CLI_OT_MODE=api\|browser\|auto` | OpenTable transport selector |
-| `RESTAURANT_CLI_TOCK_MODE=api\|browser\|auto` | Tock transport selector |
+| `RESTAURANT_CLI_ENABLE_SNIPE=1` | **Required to queue a snipe.** Off by default — scheduled sniping is an *unattended* booking that fires later, loading your token at run time with no further confirmation. (`snipe --dry-run` previews without it.) |
+| `RESTAURANT_CLI_ENABLE_SITE_AUTOMATION=1` | **Required for OpenTable + Tock `search`/`availability`.** Off by default — those providers have no official API and drive the live site (scraping / anti-bot bypass), which may violate the site's ToS. Resy and OpenTable `bookUrl` hand-off are unaffected. |
+| `RESTAURANT_CLI_OT_MODE=api\|browser\|auto` | OpenTable transport selector (when site automation is enabled) |
+| `RESTAURANT_CLI_TOCK_MODE=api\|browser\|auto` | Tock transport selector (when site automation is enabled) |
 | `RESTAURANT_CLI_TOCK_ALLOW_BOOK=1` | Required to ever fire a real Tock book (default-off safety floor) |
 
 `book` also supports `--idempotent` — pre-flights `list` for an existing matching `(venue, date, time, party)` reservation and returns it instead of double-booking on retry. Used automatically by the snipe fire-time wrapper.

@@ -17,8 +17,8 @@ This is deliberate and hard-coded. Even if asked to "just book it", you produce 
 
 ## OpenTable capabilities today
 
-- `search`: live (via browser automation — patchright + persistent Chrome profile)
-- `bookUrl`: live (deep-link hand-off)
+- `search`: live (via browser automation — patchright + persistent Chrome profile). **Off by default** — requires the user to set `RESTAURANT_CLI_ENABLE_SITE_AUTOMATION=1` (live-site automation with no official API). If `search` errors with "off by default", relay it to the user and let them enable it; do not set the env var yourself.
+- `bookUrl`: live (deep-link hand-off) — **not** gated.
 - `availability`, `book`, `cancel`, `list`: **not supported**
 
 ```bash

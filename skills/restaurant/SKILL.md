@@ -50,6 +50,17 @@ Both paths share one backend, so results are identical — only the calling conv
 
 OpenTable cannot complete bookings via API; the `bookUrl` capability returns a deep link for the user to confirm in their own browser. Always verify capabilities via `restaurant doctor` (CLI) or the tool's own error handling (OpenClaw) rather than assuming from this table.
 
+### Opt-in gates (off by default)
+
+Two higher-risk capability groups are **disabled unless the user explicitly opts in** via an env var. If a command errors with "off by default", relay the reason and the env var to the user — do **not** set it yourself:
+
+| Capability | Env var | Why gated |
+|---|---|---|
+| Scheduled sniping (`snipe`, `restaurant_schedule_snipe`) | `RESTAURANT_CLI_ENABLE_SNIPE=1` | Unattended booking — fires later, loads the token at run time, books with no further confirmation. |
+| OpenTable + Tock live-site automation (their `search`/`availability`) | `RESTAURANT_CLI_ENABLE_SITE_AUTOMATION=1` | No official API; drives the live site (scraping / anti-bot bypass), which may violate the site's ToS. |
+
+Resy (documented-token API) and OpenTable `bookUrl` hand-off are **not** gated. `snipe --dry-run` previews without the flag.
+
 ## CLI quick reference
 
 One-time auth per provider:

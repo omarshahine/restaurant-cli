@@ -4,6 +4,8 @@ description: Schedule a future reservation to book at the exact release time (e.
 
 # Restaurant Snipe
 
+> **Off by default.** Scheduled sniping requires the user to opt in by setting `RESTAURANT_CLI_ENABLE_SNIPE=1` in their environment (it's an unattended booking). If `restaurant snipe` errors with "off by default", relay that to the user and let *them* enable it — do not set the env var yourself. `restaurant snipe --dry-run` previews without the flag.
+
 The user wants to queue a sniped booking. Collect the following (via AskUserQuestion if any are missing):
 
 - **venue id** — if the user gave a name, run `restaurant search "<name>"` first and confirm the venue

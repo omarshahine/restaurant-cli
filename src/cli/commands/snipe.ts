@@ -9,6 +9,7 @@ import { createAtScheduler } from "../../scheduler/at.js";
 import { confirmTTY } from "../prompts.js";
 import { AGENT_ARGS, emit, parseAgentArgs } from "../output.js";
 import { warnUnattendedSnipe } from "../../core/warnings.js";
+import { requireSnipeEnabled } from "../../core/gates.js";
 
 export const snipeCommand = defineCommand({
   meta: {
@@ -27,11 +28,17 @@ export const snipeCommand = defineCommand({
       required: true,
     },
     provider: { type: "string", description: "Provider id", default: "" },
-    notes: { type: "string", description: "Optional notes to send to the venue", default: "" },
+    notes: {
+      type: "string",
+      description: "Optional notes to send to the venue",
+      default: "",
+    },
     ...AGENT_ARGS,
   },
   async run({ args }) {
-    const agentArgs = parseAgentArgs(args as unknown as Record<string, unknown>);
+    const agentArgs = parseAgentArgs(
+      args as unknown as Record<string, unknown>,
+    );
     const config = loadConfig();
     const registry = buildRegistry();
     const providerId = args.provider || config.defaults.provider;
@@ -66,6 +73,11 @@ export const snipeCommand = defineCommand({
       });
       return;
     }
+
+    // Off by default: scheduled sniping is an unattended booking. Require
+    // explicit opt-in before queuing anything (dry-run above is exempt — it
+    // only previews and queues nothing).
+    requireSnipeEnabled();
 
     // Disclose that this fires unattended and books with --yes at release time.
     warnUnattendedSnipe();
@@ -124,7 +136,8 @@ export const snipeCommand = defineCommand({
       },
     });
 
-    const atJobId = (await sched.list()).find((j) => j.id === jobId)?.metadata?.atJobId;
+    const atJobId = (await sched.list()).find((j) => j.id === jobId)?.metadata
+      ?.atJobId;
     const result = {
       ok: true,
       jobId,
