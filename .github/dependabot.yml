@@ -21,7 +21,30 @@ updates:
     groups:
       production:
         dependency-type: production
+      # typescript moves ahead of the tools built on its API: typescript-eslint
+      # peer-caps it (>=4.8.4 <6.1.0) and rollup-plugin-dts links its internals.
+      # Bundled into one dev group it took the healthy updates down with it, so
+      # it gets its own PR and fails alone and visibly instead.
+      typescript:
+        patterns:
+          - "typescript"
+      eslint:
+        patterns:
+          - "eslint*"
+          - "@eslint/*"
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+      types:
+        patterns:
+          - "@types/*"
       development:
         dependency-type: development
+        exclude-patterns:
+          - "typescript"
+          - "eslint*"
+          - "@eslint/*"
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+          - "@types/*"
     commit-message:
       prefix: deps
