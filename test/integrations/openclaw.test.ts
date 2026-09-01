@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import nock from "nock";
 import { createOpenClawEntry } from "../../src/integrations/openclaw/index.js";
+import { SNIPE_ENV } from "../../src/core/gates.js";
 
 interface RegisteredTool {
   name: string;
@@ -93,6 +94,77 @@ describe("integrations/openclaw", () => {
       reservationId: "rsv-1",
     });
     expect(result.content[0]!.text).toMatch(/does not support cancel/);
+  });
+
+  // Regression guard. RESTAURANT_CLI_ENABLE_SNIPE used to be enforced only in
+  // cli/commands/snipe.ts, so the OpenClaw tool queued unattended bookings
+  // with the gate off — contradicting skills/restaurant/SKILL.md, which
+  // documents this tool as gated. Without these the next refactor reopens it
+  // silently.
+  describe("restaurant_schedule_snipe opt-in gate", () => {
+    afterEach(() => {
+      delete process.env[SNIPE_ENV];
+    });
+
+    it("refuses to queue a snipe when the env var is unset", async () => {
+      delete process.env[SNIPE_ENV];
+      const tools = mountEntry({ resy_authToken: "tok" });
+      const result = await tools.get("restaurant_schedule_snipe")!.execute("call-1", {
+        provider: "resy",
+        venueId: "1387",
+        date: "2030-05-15",
+        time: "19:30",
+        partySize: 2,
+        releaseAt: "2030-05-01T10:00:00Z",
+      });
+      expect(result.content[0]!.text).toMatch(/Scheduled sniping is off by default/);
+      expect(result.content[0]!.text).toContain(SNIPE_ENV);
+    });
+
+    it("refuses for any value other than exactly '1'", async () => {
+      process.env[SNIPE_ENV] = "true";
+      const tools = mountEntry({ resy_authToken: "tok" });
+      const result = await tools.get("restaurant_schedule_snipe")!.execute("call-1", {
+        provider: "resy",
+        venueId: "1387",
+        date: "2030-05-15",
+        time: "19:30",
+        partySize: 2,
+        releaseAt: "2030-05-01T10:00:00Z",
+      });
+      expect(result.content[0]!.text).toMatch(/Scheduled sniping is off by default/);
+    });
+
+    it("gates before provider resolution, so it fails closed", async () => {
+      delete process.env[SNIPE_ENV];
+      const tools = mountEntry();
+      const result = await tools.get("restaurant_schedule_snipe")!.execute("call-1", {
+        provider: "nonexistent",
+        venueId: "1387",
+        date: "2030-05-15",
+        time: "19:30",
+        partySize: 2,
+        releaseAt: "2030-05-01T10:00:00Z",
+      });
+      // The gate, not the unknown provider, is what answers.
+      expect(result.content[0]!.text).toMatch(/Scheduled sniping is off by default/);
+    });
+
+    it("passes the gate when enabled, reaching normal validation", async () => {
+      process.env[SNIPE_ENV] = "1";
+      const tools = mountEntry({ resy_authToken: "tok" });
+      const result = await tools.get("restaurant_schedule_snipe")!.execute("call-1", {
+        provider: "resy",
+        venueId: "1387",
+        date: "2030-05-15",
+        time: "19:30",
+        partySize: 2,
+        releaseAt: "2000-01-01T00:00:00Z", // in the past -> rejected downstream
+      });
+      // Past the gate: the complaint is now about the release time.
+      expect(result.content[0]!.text).not.toMatch(/off by default/);
+      expect(result.content[0]!.text).toMatch(/must be in the future/);
+    });
   });
 
   it("tools return { content, details: null } consistently", async () => {
