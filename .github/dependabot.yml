@@ -18,6 +18,13 @@ updates:
     directory: "/"
     schedule:
       interval: monthly
+    ignore:
+      # typescript 7 cannot resolve here: typescript-eslint peer-caps it at
+      # >=4.8.4 <6.1.0, and rollup-plugin-dts links its internals. Dependabot
+      # would re-raise a doomed major every month. Minor and patch still flow;
+      # drop this block once the toolchain supports 7.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       # ⚠️ Security updates are NOT grouped by default, so a repo with three
       # advisories in one lockfile gets three PRs that all edit it. Merging any
