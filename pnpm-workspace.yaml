@@ -5,7 +5,16 @@ allowBuilds:
   # and openclaw is dev-only here -- we typecheck against its types and never
   # run it -- so the build is declined rather than allowed.
   koffi: false
-  openclaw: true
+  # ⚠️ false, not true. openclaw@2026.8.1 declares
+  # `engines: >=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0` and its preinstall
+  # script hard-exits 1 on anything older -- which broke CI, since this package
+  # promises consumers `engines: >=20` and tests on Node 20 to prove it.
+  # openclaw is only here to pin dependency scope (see the overrides note
+  # below); it is never executed, so none of its lifecycle scripts need to run.
+  # Skipping them keeps openclaw's dev-only Node floor from dictating the Node
+  # version this package is verified against. Do not flip this back to true
+  # without also raising CI's node-version.
+  openclaw: false
   protobufjs: true
   tree-sitter-bash: true
 minimumReleaseAgeExclude:
