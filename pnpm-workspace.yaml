@@ -14,17 +14,31 @@ minimumReleaseAgeExclude:
 
 # openclaw is the *host* runtime, not something this plugin ships: it is an
 # optional peer, and the published package has no runtime dependency on it.
-# It only appears in this lockfile so `tsc` can see its types, which is why it
-# now sits in devDependencies -- `autoInstallPeers: true` used to promote it
-# into `dependencies`, and every advisory in its tree was reported against this
-# repo at runtime scope. These overrides patch what is left of that tree. All
-# are same-major patch/minor bumps, and none of them reach a consumer of
-# restaurant-cli: the user's own openclaw install decides these versions.
+#
+# ⚠️ Do not "clean up" the openclaw entry in devDependencies. It is NOT there
+# for types -- `tsconfig.json` sets `types: ["node"]`, the sole reference is an
+# untyped `require("openclaw/plugin-sdk/plugin-entry")`, and `tsc --noEmit`
+# passes with openclaw absent. It is there to pin the *scope*: with
+# `autoInstallPeers: true`, an undeclared optional peer gets auto-added to
+# `dependencies`, and every advisory in openclaw's tree is then reported
+# against this repo at runtime scope (68 of them, one critical). Declaring it
+# as a devDependency is what keeps it out of the runtime graph.
+#
+# These overrides patch what is left of that tree. None reach a consumer of
+# restaurant-cli -- neither this file nor the lockfile is published, and the
+# user's own openclaw install decides these versions.
+#
 # Caret-bounded on purpose. An open `>=` floor let protobufjs cross 7 -> 8 and
 # fast-uri 3 -> 4 inside openclaw's tree, which is a migration, not a patch.
+#
+# esbuild is deliberately NOT overridden. tsup declares `esbuild: ^0.27.0`,
+# which on a 0.x version pins the minor, so forcing 0.28.x puts the build tool
+# outside its own declared range -- and `prepublishOnly` runs that build. The
+# advisory it would close (arbitrary file read via esbuild's *dev server* on
+# *Windows*) does not apply: nothing here starts that server, and nothing here
+# builds on Windows. Let tsup's own upgrade carry esbuild forward instead.
 overrides:
   body-parser: '^2.3.0'
-  esbuild: '^0.28.1'
   fast-uri: '^3.1.5'
   hono: '^4.12.34'
   ip-address: '^10.3.1'
