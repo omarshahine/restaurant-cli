@@ -114,7 +114,7 @@
     "yaml": "^2.6.1"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "^26.4.0",
     "eslint": "^10.9.1",
     "nock": "^14.0.0-beta.19",
     "patchright": "^1.59.4",
