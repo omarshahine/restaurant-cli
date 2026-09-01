@@ -10,8 +10,8 @@ jobs:
     name: Version Consistency
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: omarshahine/version-consistency-action@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: omarshahine/version-consistency-action@de358297133489498bca32eaea89a296e9e4a5b0  # v1
         with:
           sets: |
             - name: "Restaurant plugin"
