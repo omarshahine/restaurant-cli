@@ -18,6 +18,7 @@ import { createAtScheduler } from "../../scheduler/at.js";
 import { parseReleaseAt } from "../../core/time.js";
 import { resolveSecret } from "../../core/secrets.js";
 import { resolveCliBinary, shellQuote } from "../../core/shell.js";
+import { requireSnipeEnabled } from "../../core/gates.js";
 import { randomUUID } from "node:crypto";
 import type { Credentials, Provider } from "../../providers/types.js";
 
@@ -288,6 +289,19 @@ export function createOpenClawEntry(): {
           "Queue a booking to fire at a specific release time. Writes a POSIX `at` job that self-invokes `restaurant book` with --yes when the window opens.",
         parameters: snipeSchema,
         async execute(_id, params) {
+          // The opt-in gate has to hold on this surface too. It queues an
+          // UNATTENDED booking that fires later with `--yes`, so leaving it
+          // enforced only in `cli/commands/snipe.ts` meant an agent could
+          // book with real credentials while the user believed
+          // RESTAURANT_CLI_ENABLE_SNIPE was protecting them — and
+          // skills/restaurant/SKILL.md documents this tool as gated.
+          // Checked first, before anything else, so it fails closed.
+          try {
+            requireSnipeEnabled();
+          } catch (e) {
+            return err(e instanceof Error ? e.message : String(e));
+          }
+
           const provider = resolveProvider(params["provider"] as string | undefined);
           if (typeof provider === "string") return err(provider);
           if (!provider.capabilities.snipe) {
