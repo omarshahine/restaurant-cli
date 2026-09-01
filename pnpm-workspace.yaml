@@ -1,8 +1,55 @@
 allowBuilds:
   '@google/genai': true
   esbuild: true
-  openclaw: true
+  # New with openclaw 2026.8.1. koffi is an FFI shim with a native postinstall,
+  # and openclaw is dev-only here -- we typecheck against its types and never
+  # run it -- so the build is declined rather than allowed.
+  koffi: false
+  # ⚠️ false, not true. openclaw@2026.8.1 declares
+  # `engines: >=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0` and its preinstall
+  # script hard-exits 1 on anything older -- which broke CI, since this package
+  # promises consumers `engines: >=20` and tests on Node 20 to prove it.
+  # openclaw is only here to pin dependency scope (see the overrides note
+  # below); it is never executed, so none of its lifecycle scripts need to run.
+  # Skipping them keeps openclaw's dev-only Node floor from dictating the Node
+  # version this package is verified against. Do not flip this back to true
+  # without also raising CI's node-version.
+  openclaw: false
   protobufjs: true
   tree-sitter-bash: true
 minimumReleaseAgeExclude:
-  - openclaw@2026.6.5
+  - openclaw@2026.6.5 || 2026.8.1
+  - '@openclaw/ai@2026.8.1'
+
+# openclaw is the *host* runtime, not something this plugin ships: it is an
+# optional peer, and the published package has no runtime dependency on it.
+#
+# ⚠️ Do not "clean up" the openclaw entry in devDependencies. It is NOT there
+# for types -- `tsconfig.json` sets `types: ["node"]`, the sole reference is an
+# untyped `require("openclaw/plugin-sdk/plugin-entry")`, and `tsc --noEmit`
+# passes with openclaw absent. It is there to pin the *scope*: with
+# `autoInstallPeers: true`, an undeclared optional peer gets auto-added to
+# `dependencies`, and every advisory in openclaw's tree is then reported
+# against this repo at runtime scope (68 of them, one critical). Declaring it
+# as a devDependency is what keeps it out of the runtime graph.
+#
+# These overrides patch what is left of that tree. None reach a consumer of
+# restaurant-cli -- neither this file nor the lockfile is published, and the
+# user's own openclaw install decides these versions.
+#
+# Caret-bounded on purpose. An open `>=` floor let protobufjs cross 7 -> 8 and
+# fast-uri 3 -> 4 inside openclaw's tree, which is a migration, not a patch.
+#
+# esbuild is deliberately NOT overridden. tsup declares `esbuild: ^0.27.0`,
+# which on a 0.x version pins the minor, so forcing 0.28.x puts the build tool
+# outside its own declared range -- and `prepublishOnly` runs that build. The
+# advisory it would close (arbitrary file read via esbuild's *dev server* on
+# *Windows*) does not apply: nothing here starts that server, and nothing here
+# builds on Windows. Let tsup's own upgrade carry esbuild forward instead.
+overrides:
+  body-parser: '^2.3.0'
+  fast-uri: '^3.1.5'
+  hono: '^4.12.34'
+  ip-address: '^10.3.1'
+  protobufjs: '^7.6.5'
+  qs: '^6.15.2'
