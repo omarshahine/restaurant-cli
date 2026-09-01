@@ -1,8 +1,32 @@
 allowBuilds:
   '@google/genai': true
   esbuild: true
+  # New with openclaw 2026.8.1. koffi is an FFI shim with a native postinstall,
+  # and openclaw is dev-only here -- we typecheck against its types and never
+  # run it -- so the build is declined rather than allowed.
+  koffi: false
   openclaw: true
   protobufjs: true
   tree-sitter-bash: true
 minimumReleaseAgeExclude:
-  - openclaw@2026.6.5
+  - openclaw@2026.6.5 || 2026.8.1
+  - '@openclaw/ai@2026.8.1'
+
+# openclaw is the *host* runtime, not something this plugin ships: it is an
+# optional peer, and the published package has no runtime dependency on it.
+# It only appears in this lockfile so `tsc` can see its types, which is why it
+# now sits in devDependencies -- `autoInstallPeers: true` used to promote it
+# into `dependencies`, and every advisory in its tree was reported against this
+# repo at runtime scope. These overrides patch what is left of that tree. All
+# are same-major patch/minor bumps, and none of them reach a consumer of
+# restaurant-cli: the user's own openclaw install decides these versions.
+# Caret-bounded on purpose. An open `>=` floor let protobufjs cross 7 -> 8 and
+# fast-uri 3 -> 4 inside openclaw's tree, which is a migration, not a patch.
+overrides:
+  body-parser: '^2.3.0'
+  esbuild: '^0.28.1'
+  fast-uri: '^3.1.5'
+  hono: '^4.12.34'
+  ip-address: '^10.3.1'
+  protobufjs: '^7.6.5'
+  qs: '^6.15.2'

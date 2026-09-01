@@ -117,6 +117,7 @@
     "@types/node": "^26.4.0",
     "eslint": "^10.9.1",
     "nock": "^14.0.0-beta.19",
+    "openclaw": "^2026.8.1",
     "patchright": "^1.59.4",
     "playwright": "^1.59.1",
     "prettier": "^3.4.2",
