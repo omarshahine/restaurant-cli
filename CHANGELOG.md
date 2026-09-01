@@ -5,6 +5,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.1.28] — 2026-09-01
+
+### Security — the snipe opt-in gate now actually applies to the OpenClaw plugin
+
+**If you use this plugin through OpenClaw, you were affected.** 0.1.27
+introduced `RESTAURANT_CLI_ENABLE_SNIPE` and this changelog stated that
+`restaurant_schedule_snipe` "now refuse[s] to queue unless the flag is set".
+That was only true of the CLI. The gate had exactly one enforcement point,
+`src/cli/commands/snipe.ts`, and `src/integrations/openclaw/index.ts` imported
+no gates at all — so the tool went straight to the scheduler and queued an `at`
+job running `restaurant book … --yes`.
+
+Concretely: **an agent could queue an unattended booking — one that fires
+later, loads your provider token at run time, and books with no further
+confirmation — while `RESTAURANT_CLI_ENABLE_SNIPE` was unset and you believed
+it was protecting you.** A real reservation, with real credentials, without the
+switch.
+
+- `requireSnipeEnabled()` is now called at the `restaurant_schedule_snipe`
+  entry point, **before provider resolution**, so it fails closed. It returns
+  the gate's actionable message as a normal error result rather than throwing.
+- Both entry points are now covered: `cli/commands/snipe.ts` (unchanged) and
+  `integrations/openclaw/index.ts` (new).
+- Four regression tests on the plugin path — unset, a non-`"1"` value, gated
+  before provider resolution, and passing through when enabled. Three fail
+  against the pre-fix source, so they guard rather than merely describe.
+
+**No feature is removed or newly restricted.** With `RESTAURANT_CLI_ENABLE_SNIPE=1`
+behaviour is identical to 0.1.27. Live booking, live cancellation, the `at`
+scheduler and Resy token auth are untouched.
+
+Why only this gate was affected: `requireSiteAutomationEnabled()` is called
+*inside* the providers, which every surface reaches, so OpenTable/Tock
+automation never had an equivalent hole. Only the snipe gate sat above the
+provider layer.
+
 ## [0.1.27] — 2026-06-24
 
 ### Security — opt-in gates for the highest-risk capabilities
