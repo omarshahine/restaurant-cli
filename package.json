@@ -114,18 +114,18 @@
     "yaml": "^2.6.1"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.3",
     "eslint": "^10.9.1",
     "nock": "^14.0.0-beta.19",
-    "openclaw": "^2026.8.1",
-    "patchright": "^1.59.4",
-    "playwright": "^1.59.1",
-    "prettier": "^3.4.2",
+    "openclaw": "^2026.9.6",
+    "patchright": "^1.63.0",
+    "playwright": "^1.63.0",
+    "prettier": "^3.9.9",
     "tsup": "^8.3.5",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   },
   "peerDependencies": {
     "openclaw": ">=2026.6.5",
