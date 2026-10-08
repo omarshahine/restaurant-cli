@@ -40,10 +40,10 @@ importers:
         specifier: ^10.9.1
         version: 10.11.0(jiti@2.7.0)(supports-color@7.2.0)
       nock:
-        specifier: ^14.0.0-beta.19
+        specifier: ^14.0.17
         version: 14.0.17
       openclaw:
-        specifier: ^2026.9.6
+        specifier: ^2026.9.8
         version: 2026.9.8(supports-color@7.2.0)(undici@8.10.0)
       patchright:
         specifier: ^1.63.0

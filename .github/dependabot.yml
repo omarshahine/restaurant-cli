@@ -25,6 +25,12 @@ updates:
       # drop this block once the toolchain supports 7.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # nock 15 (via @mswjs/interceptors) calls Promise.withResolvers, which
+      # needs Node 22, but engines promises Node >=20 and CI tests on 20 to
+      # back that. Every nock-based test fails with "fetch failed" there.
+      # Drop this once engines moves to >=22.
+      - dependency-name: "nock"
+        update-types: ["version-update:semver-major"]
     groups:
       # ⚠️ Security updates are NOT grouped by default, so a repo with three
       # advisories in one lockfile gets three PRs that all edit it. Merging any
