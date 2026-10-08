@@ -116,7 +116,7 @@
   "devDependencies": {
     "@types/node": "^26.6.3",
     "eslint": "^10.9.1",
-    "nock": "^14.0.0-beta.19",
+    "nock": "^15.0.0-beta.15",
     "openclaw": "^2026.9.6",
     "patchright": "^1.63.0",
     "playwright": "^1.63.0",
