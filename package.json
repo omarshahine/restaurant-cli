@@ -116,7 +116,7 @@
   "devDependencies": {
     "@types/node": "^26.4.0",
     "eslint": "^10.9.1",
-    "nock": "^14.0.0-beta.19",
+    "nock": "^15.0.0-beta.15",
     "openclaw": "^2026.8.1",
     "patchright": "^1.59.4",
     "playwright": "^1.59.1",
@@ -125,7 +125,7 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.3"
   },
   "peerDependencies": {
     "openclaw": ">=2026.6.5",
