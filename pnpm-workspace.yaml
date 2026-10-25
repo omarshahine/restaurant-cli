@@ -52,5 +52,10 @@ overrides:
   fast-uri: '^3.1.5'
   hono: '^4.12.34'
   ip-address: '^10.3.1'
+  # 2026.10.7 stops bundling Undici, so this patches the installed package.
+  # Older OpenClaw tarballs ship their own vulnerable copy that overrides
+  # cannot replace; keep the devDependency floor aligned with this override.
+  # This does not rewrite the separate MCP SDK bundled in Chrome DevTools MCP.
+  'openclaw>undici': '^8.12.2'
   protobufjs: '^7.6.5'
   qs: '^6.15.2'
