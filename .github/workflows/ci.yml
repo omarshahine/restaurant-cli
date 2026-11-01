@@ -20,9 +20,16 @@ jobs:
           version: 10
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7
         with:
-          node-version: 20
+          # tsup 9's supported build floor. The packaged CLI keeps Node 20.
+          node-version: 22.18.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Verify the supported Node 20 runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7
+        with:
+          node-version: 20
+      - run: pnpm test
+      - run: node dist/bin/restaurant.js --help

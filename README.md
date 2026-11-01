@@ -21,6 +21,11 @@ npx playwright install chromium
 
 ### From a clone (for development)
 
+The packaged CLI runs on Node 20 or later. Building from source, including a
+direct GitHub install, requires Node 22.18+, Node 24.11+, or Node 26+ because
+tsup 9 supports those Node release lines. CI builds with Node 22.18 and also
+runs the test suite and the built CLI on Node 20.
+
 ```bash
 git clone https://github.com/omarshahine/restaurant-cli.git
 cd restaurant-cli
